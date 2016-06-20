@@ -158,13 +158,16 @@ func (bl *Bloom) AddTS(entry []byte) {
 // returns true if the entry was added to the Bloom Filter
 func (bl Bloom) Has(entry []byte) bool {
 	l, h := bl.sipHash(entry)
+	res := true
 	for i := uint64(0); i < bl.setLocs; i++ {
-		switch bl.IsSet((h + i*l) & bl.size) {
-		case false:
-			return false
-		}
+		res = res && bl.IsSet((h+i*l)&bl.size)
+		// Branching here (early escape) is not worth it
+		// This is my conclusion from benchmarks
+		// if !res {
+		//   return false
+		// }
 	}
-	return true
+	return res
 }
 
 // HasTS
@@ -179,12 +182,17 @@ func (bl *Bloom) HasTS(entry []byte) bool {
 // Only Add entry if it's not present in the bloomfilter
 // returns true if entry was added
 // returns false if entry was allready registered in the bloomfilter
-func (bl Bloom) AddIfNotHas(entry []byte) (added bool) {
-	if bl.Has(entry[:]) {
-		return added
+func (bl *Bloom) AddIfNotHas(entry []byte) (added bool) {
+	l, h := bl.sipHash(entry)
+	res := true
+	for i := uint64(0); i < bl.setLocs; i++ {
+		prev := bl.GetSet((h + i*l) & bl.size)
+		if !prev {
+			bl.ElemNum++
+		}
+		res = res && prev
 	}
-	bl.Add(entry[:])
-	return true
+	return !res
 }
 
 // AddIfNotHasTS
@@ -218,13 +226,19 @@ func (bl *Bloom) Set(idx uint64) {
 	*(*uint8)(ptr) |= mask[idx%8]
 }
 
+func (bl *Bloom) GetSet(idx uint64) bool {
+	ptr := unsafe.Pointer(uintptr(unsafe.Pointer(&bl.bitset[idx>>6])) + uintptr((idx%64)>>3))
+	res := *(*uint8)(ptr)&mask[idx%8] > 0
+	*(*uint8)(ptr) |= mask[idx%8]
+	return res
+}
+
 // IsSet
 // check if bit[idx] of bitset is set
 // returns true/false
 func (bl *Bloom) IsSet(idx uint64) bool {
 	ptr := unsafe.Pointer(uintptr(unsafe.Pointer(&bl.bitset[idx>>6])) + uintptr((idx%64)>>3))
-	r := ((*(*uint8)(ptr)) >> (idx % 8)) & 1
-	return r == 1
+	return *(*uint8)(ptr)&mask[idx%8] > 0
 }
 
 // JSONMarshal
