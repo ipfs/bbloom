@@ -69,8 +69,8 @@ func New(params ...float64) (bloomfilter Bloom) {
 		size:    size - 1,
 		setLocs: locs,
 		shift:   64 - exponent,
+		bitset:  make([]uint64, size>>6),
 	}
-	bloomfilter.Size(size)
 	return bloomfilter
 }
 
@@ -205,17 +205,11 @@ func (bl *Bloom) AddIfNotHasTS(entry []byte) (added bool) {
 	return bl.AddIfNotHas(entry[:])
 }
 
-// Size
-// make Bloom filter with as bitset of size sz
-func (bl *Bloom) Size(sz uint64) {
-	(*bl).bitset = make([]uint64, sz>>6)
-}
-
 // Clear
 // resets the Bloom filter
 func (bl *Bloom) Clear() {
 	for i, _ := range (*bl).bitset {
-		(*bl).bitset[i] = 0
+		bl.bitset[i] = 0
 	}
 }
 
