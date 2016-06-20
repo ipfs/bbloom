@@ -94,23 +94,10 @@ type bloomJSONImExport struct {
 	SetLocs   uint64
 }
 
-// JSONUnmarshal
-// takes JSON-Object (type bloomJSONImExport) as []bytes
-// returns bloom32 / bloom64 object
-func JSONUnmarshal(dbData []byte) Bloom {
-	bloomImEx := bloomJSONImExport{}
-	json.Unmarshal(dbData, &bloomImEx)
-	buf := bytes.NewBuffer(bloomImEx.FilterSet)
-	bs := buf.Bytes()
-	bf := NewWithBoolset(&bs, bloomImEx.SetLocs)
-	return bf
-}
-
 //
 // Bloom filter
 type Bloom struct {
 	Mtx     sync.Mutex
-	ElemNum uint64
 	bitset  []uint64
 	sizeExp uint64
 	size    uint64
@@ -141,7 +128,6 @@ func (bl *Bloom) Add(entry []byte) {
 	l, h := bl.sipHash(entry)
 	for i := uint64(0); i < (*bl).setLocs; i++ {
 		(*bl).Set((h + i*l) & (*bl).size)
-		(*bl).ElemNum++
 	}
 }
 
@@ -187,9 +173,6 @@ func (bl *Bloom) AddIfNotHas(entry []byte) (added bool) {
 	res := true
 	for i := uint64(0); i < bl.setLocs; i++ {
 		prev := bl.GetSet((h + i*l) & bl.size)
-		if !prev {
-			bl.ElemNum++
-		}
 		res = res && prev
 	}
 	return !res
@@ -251,6 +234,18 @@ func (bl Bloom) JSONMarshal() []byte {
 		log.Fatal("json.Marshal failed: ", err)
 	}
 	return data
+}
+
+// JSONUnmarshal
+// takes JSON-Object (type bloomJSONImExport) as []bytes
+// returns bloom32 / bloom64 object
+func JSONUnmarshal(dbData []byte) Bloom {
+	bloomImEx := bloomJSONImExport{}
+	json.Unmarshal(dbData, &bloomImEx)
+	buf := bytes.NewBuffer(bloomImEx.FilterSet)
+	bs := buf.Bytes()
+	bf := NewWithBoolset(&bs, bloomImEx.SetLocs)
+	return bf
 }
 
 // // alternative hashFn
