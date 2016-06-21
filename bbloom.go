@@ -97,7 +97,7 @@ type bloomJSONImExport struct {
 //
 // Bloom filter
 type Bloom struct {
-	Mtx     sync.Mutex
+	Mtx     sync.RWMutex
 	bitset  []uint64
 	sizeExp uint64
 	size    uint64
@@ -127,7 +127,7 @@ type Bloom struct {
 func (bl *Bloom) Add(entry []byte) {
 	l, h := bl.sipHash(entry)
 	for i := uint64(0); i < (*bl).setLocs; i++ {
-		(*bl).Set((h + i*l) & (*bl).size)
+		bl.set((h + i*l) & (*bl).size)
 	}
 }
 
@@ -146,7 +146,7 @@ func (bl Bloom) Has(entry []byte) bool {
 	l, h := bl.sipHash(entry)
 	res := true
 	for i := uint64(0); i < bl.setLocs; i++ {
-		res = res && bl.IsSet((h+i*l)&bl.size)
+		res = res && bl.isSet((h+i*l)&bl.size)
 		// Branching here (early escape) is not worth it
 		// This is my conclusion from benchmarks
 		// if !res {
@@ -159,8 +159,8 @@ func (bl Bloom) Has(entry []byte) bool {
 // HasTS
 // Thread safe: Mutex.Lock the bloomfilter for the time of processing the entry
 func (bl *Bloom) HasTS(entry []byte) bool {
-	bl.Mtx.Lock()
-	defer bl.Mtx.Unlock()
+	bl.Mtx.RLock()
+	defer bl.Mtx.RUnlock()
 	return bl.Has(entry[:])
 }
 
@@ -172,7 +172,7 @@ func (bl *Bloom) AddIfNotHas(entry []byte) (added bool) {
 	l, h := bl.sipHash(entry)
 	res := true
 	for i := uint64(0); i < bl.setLocs; i++ {
-		prev := bl.GetSet((h + i*l) & bl.size)
+		prev := bl.getSet((h + i*l) & bl.size)
 		res = res && prev
 	}
 	return !res
@@ -191,6 +191,8 @@ func (bl *Bloom) AddIfNotHasTS(entry []byte) (added bool) {
 // Clear
 // resets the Bloom filter
 func (bl *Bloom) Clear() {
+	bl.Mtx.Lock()
+	defer bl.Mtx.Unlock()
 	for i, _ := range (*bl).bitset {
 		bl.bitset[i] = 0
 	}
@@ -198,12 +200,12 @@ func (bl *Bloom) Clear() {
 
 // Set
 // set the bit[idx] of bitsit
-func (bl *Bloom) Set(idx uint64) {
+func (bl *Bloom) set(idx uint64) {
 	ptr := unsafe.Pointer(uintptr(unsafe.Pointer(&bl.bitset[idx>>6])) + uintptr((idx%64)>>3))
 	*(*uint8)(ptr) |= mask[idx%8]
 }
 
-func (bl *Bloom) GetSet(idx uint64) bool {
+func (bl *Bloom) getSet(idx uint64) bool {
 	ptr := unsafe.Pointer(uintptr(unsafe.Pointer(&bl.bitset[idx>>6])) + uintptr((idx%64)>>3))
 	res := *(*uint8)(ptr)&mask[idx%8] > 0
 	*(*uint8)(ptr) |= mask[idx%8]
@@ -213,14 +215,16 @@ func (bl *Bloom) GetSet(idx uint64) bool {
 // IsSet
 // check if bit[idx] of bitset is set
 // returns true/false
-func (bl *Bloom) IsSet(idx uint64) bool {
+func (bl *Bloom) isSet(idx uint64) bool {
 	ptr := unsafe.Pointer(uintptr(unsafe.Pointer(&bl.bitset[idx>>6])) + uintptr((idx%64)>>3))
 	return *(*uint8)(ptr)&mask[idx%8] > 0
 }
 
 // JSONMarshal
 // returns JSON-object (type bloomJSONImExport) as []byte
-func (bl Bloom) JSONMarshal() []byte {
+func (bl *Bloom) JSONMarshal() []byte {
+	bl.Mtx.RLock()
+	defer bl.Mtx.RUnlock()
 	bloomImEx := bloomJSONImExport{}
 	bloomImEx.SetLocs = uint64(bl.setLocs)
 	bloomImEx.FilterSet = make([]byte, len(bl.bitset)<<3)
