@@ -103,6 +103,12 @@ type Bloom struct {
 	size    uint64
 	setLocs uint64
 	shift   uint64
+
+	content uint64
+}
+
+func (bl *Bloom) ElementsAdded() uint64 {
+	return bl.content
 }
 
 // <--- http://www.cse.yorku.ca/~oz/hash.html
@@ -125,6 +131,7 @@ type Bloom struct {
 // Add
 // set the bit(s) for entry; Adds an entry to the Bloom filter
 func (bl *Bloom) Add(entry []byte) {
+	bl.content++
 	l, h := bl.sipHash(entry)
 	for i := uint64(0); i < (*bl).setLocs; i++ {
 		bl.set((h + i*l) & (*bl).size)
@@ -142,7 +149,7 @@ func (bl *Bloom) AddTS(entry []byte) {
 // Has
 // check if bit(s) for entry is/are set
 // returns true if the entry was added to the Bloom Filter
-func (bl Bloom) Has(entry []byte) bool {
+func (bl *Bloom) Has(entry []byte) bool {
 	l, h := bl.sipHash(entry)
 	res := true
 	for i := uint64(0); i < bl.setLocs; i++ {
@@ -170,12 +177,15 @@ func (bl *Bloom) HasTS(entry []byte) bool {
 // returns false if entry was allready registered in the bloomfilter
 func (bl *Bloom) AddIfNotHas(entry []byte) (added bool) {
 	l, h := bl.sipHash(entry)
-	res := true
+	contained := true
 	for i := uint64(0); i < bl.setLocs; i++ {
 		prev := bl.getSet((h + i*l) & bl.size)
-		res = res && prev
+		contained = contained && prev
 	}
-	return !res
+	if !contained {
+		bl.content++
+	}
+	return !contained
 }
 
 // AddIfNotHasTS
@@ -196,6 +206,7 @@ func (bl *Bloom) Clear() {
 	for i, _ := range (*bl).bitset {
 		bl.bitset[i] = 0
 	}
+	bl.content = 0
 }
 
 // Set
