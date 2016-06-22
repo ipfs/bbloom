@@ -38,7 +38,10 @@ func TestMain(m *testing.M) {
 }
 
 func TestM_NumberOfWrongs(t *testing.T) {
-	bf = New(float64(n*10), float64(7))
+	bf, err := New(float64(n*10), float64(7))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	cnt := 0
 	for i := range wordlist1 {
@@ -53,7 +56,10 @@ func TestM_NumberOfWrongs(t *testing.T) {
 func TestM_JSON(t *testing.T) {
 	const shallBe = int(1 << 16)
 
-	bf = New(float64(n*10), float64(7))
+	bf, err := New(float64(n*10), float64(7))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	cnt := 0
 	for i := range wordlist1 {
@@ -62,7 +68,10 @@ func TestM_JSON(t *testing.T) {
 		}
 	}
 
-	Json := bf.JSONMarshal()
+	Json, err := bf.JSONMarshal()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// create new bloomfilter from bloomfilter's JSON representation
 	bf2 := JSONUnmarshal(Json)
@@ -81,7 +90,10 @@ func TestM_JSON(t *testing.T) {
 }
 
 func ExampleM_NewAddHasAddIfNotHas() {
-	bf := New(float64(512), float64(1))
+	bf, err := New(float64(512), float64(1))
+	if err != nil {
+		panic(err)
+	}
 
 	fmt.Printf("%v %v %v %v\n", bf.sizeExp, bf.size, bf.setLocs, bf.shift)
 
@@ -114,12 +126,15 @@ func ExampleM_NewAddHasAddIfNotHas() {
 
 func BenchmarkM_New(b *testing.B) {
 	for r := 0; r < b.N; r++ {
-		_ = New(float64(n*10), float64(7))
+		_, _ = New(float64(n*10), float64(7))
 	}
 }
 
 func BenchmarkM_Clear(b *testing.B) {
-	bf = New(float64(n*10), float64(7))
+	bf, err := New(float64(n*10), float64(7))
+	if err != nil {
+		b.Fatal(err)
+	}
 	for i := range wordlist1 {
 		bf.Add(wordlist1[i])
 	}
@@ -130,7 +145,10 @@ func BenchmarkM_Clear(b *testing.B) {
 }
 
 func BenchmarkM_Add(b *testing.B) {
-	bf = New(float64(n*10), float64(7))
+	bf, err := New(float64(n*10), float64(7))
+	if err != nil {
+		b.Fatal(err)
+	}
 	b.ResetTimer()
 	for r := 0; r < b.N; r++ {
 		for i := range wordlist1 {
@@ -151,7 +169,10 @@ func BenchmarkM_Has(b *testing.B) {
 }
 
 func BenchmarkM_AddIfNotHasFALSE(b *testing.B) {
-	bf = New(float64(n*10), float64(7))
+	bf, err := New(float64(n*10), float64(7))
+	if err != nil {
+		b.Fatal(err)
+	}
 	for i := range wordlist1 {
 		bf.Has(wordlist1[i])
 	}
@@ -164,7 +185,10 @@ func BenchmarkM_AddIfNotHasFALSE(b *testing.B) {
 }
 
 func BenchmarkM_AddIfNotHasClearTRUE(b *testing.B) {
-	bf = New(float64(n*10), float64(7))
+	bf, err := New(float64(n*10), float64(7))
+	if err != nil {
+		b.Fatal(err)
+	}
 
 	b.ResetTimer()
 	for r := 0; r < b.N; r++ {
@@ -176,7 +200,10 @@ func BenchmarkM_AddIfNotHasClearTRUE(b *testing.B) {
 }
 
 func BenchmarkM_AddTS(b *testing.B) {
-	bf = New(float64(n*10), float64(7))
+	bf, err := New(float64(n*10), float64(7))
+	if err != nil {
+		b.Fatal(err)
+	}
 
 	b.ResetTimer()
 	for r := 0; r < b.N; r++ {
@@ -198,7 +225,10 @@ func BenchmarkM_HasTS(b *testing.B) {
 }
 
 func BenchmarkM_AddIfNotHasTSFALSE(b *testing.B) {
-	bf = New(float64(n*10), float64(7))
+	bf, err := New(float64(n*10), float64(7))
+	if err != nil {
+		b.Fatal(err)
+	}
 	for i := range wordlist1 {
 		bf.Has(wordlist1[i])
 	}
@@ -211,7 +241,10 @@ func BenchmarkM_AddIfNotHasTSFALSE(b *testing.B) {
 }
 
 func BenchmarkM_AddIfNotHasTSClearTRUE(b *testing.B) {
-	bf = New(float64(n*10), float64(7))
+	bf, err := New(float64(n*10), float64(7))
+	if err != nil {
+		b.Fatal(err)
+	}
 
 	b.ResetTimer()
 	for r := 0; r < b.N; r++ {

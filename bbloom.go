@@ -23,7 +23,7 @@ package bbloom
 import (
 	"bytes"
 	"encoding/json"
-	"log"
+	"errors"
 	"math"
 	"sync"
 	"unsafe"
@@ -50,35 +50,44 @@ func calcSizeByWrongPositives(numEntries, wrongs float64) (uint64, uint64) {
 	return uint64(size), uint64(locs)
 }
 
+var ErrUsage = errors.New("usage: New(float64(number_of_entries), float64(number_of_hashlocations)) i.e. New(float64(1000), float64(3)) or New(float64(number_of_entries), float64(ratio_of_false_positives)) i.e. New(float64(1000), float64(0.03))")
+var ErrInvalidParms = errors.New("One of parameters was outside of allowed range")
+
 // New
 // returns a new bloomfilter
-func New(params ...float64) (bloomfilter Bloom) {
+func New(params ...float64) (bloomfilter *Bloom, err error) {
 	var entries, locs uint64
 	if len(params) == 2 {
+		if params[0] < 0 || params[1] < 0 {
+			return nil, ErrInvalidParms
+		}
 		if params[1] < 1 {
 			entries, locs = calcSizeByWrongPositives(params[0], params[1])
 		} else {
 			entries, locs = uint64(params[0]), uint64(params[1])
 		}
 	} else {
-		log.Fatal("usage: New(float64(number_of_entries), float64(number_of_hashlocations)) i.e. New(float64(1000), float64(3)) or New(float64(number_of_entries), float64(ratio_of_false_positives)) i.e. New(float64(1000), float64(0.03))")
+		return nil, ErrUsage
 	}
 	size, exponent := getSize(uint64(entries))
-	bloomfilter = Bloom{
+	bloomfilter = &Bloom{
 		sizeExp: exponent,
 		size:    size - 1,
 		setLocs: locs,
 		shift:   64 - exponent,
 		bitset:  make([]uint64, size>>6),
 	}
-	return bloomfilter
+	return bloomfilter, nil
 }
 
 // NewWithBoolset
 // takes a []byte slice and number of locs per entry
 // returns the bloomfilter with a bitset populated according to the input []byte
-func NewWithBoolset(bs *[]byte, locs uint64) (bloomfilter Bloom) {
-	bloomfilter = New(float64(len(*bs)<<3), float64(locs))
+func NewWithBoolset(bs *[]byte, locs uint64) (bloomfilter *Bloom) {
+	bloomfilter, err := New(float64(len(*bs)<<3), float64(locs))
+	if err != nil {
+		panic(err) // Should never happen
+	}
 	ptr := uintptr(unsafe.Pointer(&bloomfilter.bitset[0]))
 	for _, b := range *bs {
 		*(*uint8)(unsafe.Pointer(ptr)) = b
@@ -233,7 +242,7 @@ func (bl *Bloom) isSet(idx uint64) bool {
 
 // JSONMarshal
 // returns JSON-object (type bloomJSONImExport) as []byte
-func (bl *Bloom) JSONMarshal() []byte {
+func (bl *Bloom) JSONMarshal() ([]byte, error) {
 	bl.Mtx.RLock()
 	defer bl.Mtx.RUnlock()
 	bloomImEx := bloomJSONImExport{}
@@ -245,16 +254,13 @@ func (bl *Bloom) JSONMarshal() []byte {
 		ptr++
 	}
 	data, err := json.Marshal(bloomImEx)
-	if err != nil {
-		log.Fatal("json.Marshal failed: ", err)
-	}
-	return data
+	return data, err
 }
 
 // JSONUnmarshal
 // takes JSON-Object (type bloomJSONImExport) as []bytes
 // returns bloom32 / bloom64 object
-func JSONUnmarshal(dbData []byte) Bloom {
+func JSONUnmarshal(dbData []byte) *Bloom {
 	bloomImEx := bloomJSONImExport{}
 	json.Unmarshal(dbData, &bloomImEx)
 	buf := bytes.NewBuffer(bloomImEx.FilterSet)
