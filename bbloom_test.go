@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"testing"
 )
@@ -33,7 +34,7 @@ func TestMain(m *testing.M) {
 	fmt.Println("\n###############\nbbloom_test.go")
 	fmt.Print("Benchmarks relate to 2**16 OP. --> output/65536 op/ns\n###############\n\n")
 
-	m.Run()
+	os.Exit(m.Run())
 
 }
 
@@ -86,7 +87,17 @@ func TestM_JSON(t *testing.T) {
 	if cnt2 != shallBe {
 		t.Errorf("FAILED !AddIfNotHas = %v; want %v", cnt2, shallBe)
 	}
-
+}
+func TestFillRatio(t *testing.T) {
+	bf, err := New(float64(512), float64(7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bf.Add([]byte("test"))
+	r := bf.FillRatio()
+	if math.Abs(r-float64(7)/float64(512)) > 0.001 {
+		t.Error("ratio doesn't work")
+	}
 }
 
 func ExampleM_NewAddHasAddIfNotHas() {

@@ -269,6 +269,27 @@ func JSONUnmarshal(dbData []byte) *Bloom {
 	return bf
 }
 
+func (bl *Bloom) FillRatio() float64 {
+	count := uint64(0)
+	for _, b := range bl.bitset {
+		count += uint64(popcount(b))
+	}
+	return float64(count) / float64(bl.size+1)
+}
+
+func popcount(x uint64) uint {
+	const (
+		m1  = 0x5555555555555555 //binary: 0101...
+		m2  = 0x3333333333333333 //binary: 00110011..
+		m4  = 0x0f0f0f0f0f0f0f0f //binary:  4 zeros,  4 ones ...
+		h01 = 0x0101010101010101 //the sum of 256 to the power of 0,1,2,3...
+	)
+	x -= (x >> 1) & m1             //put count of each 2 bits into those 2 bits
+	x = (x & m2) + ((x >> 2) & m2) //put count of each 4 bits into those 4 bits
+	x = (x + (x >> 4)) & m4        //put count of each 8 bits into those 8 bits
+	return uint((x * h01) >> 56)
+}
+
 // // alternative hashFn
 // func (bl Bloom) fnv64a(b *[]byte) (l, h uint64) {
 // 	h64 := fnv.New64a()
