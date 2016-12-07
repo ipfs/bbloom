@@ -30,7 +30,15 @@ import (
 )
 
 // helper
-var mask = []uint8{1, 2, 4, 8, 16, 32, 64, 128}
+
+func init() {
+	mask = make([]uint64, 64)
+	for i := uint64(0); i < 64; i++ {
+		mask[i] = uint64(1) << i
+	}
+}
+
+var mask []uint64
 
 func getSize(ui64 uint64) (size uint64, exponent uint64) {
 	if ui64 < uint64(512) {
@@ -221,14 +229,14 @@ func (bl *Bloom) Clear() {
 // Set
 // set the bit[idx] of bitsit
 func (bl *Bloom) set(idx uint64) {
-	ptr := unsafe.Pointer(uintptr(unsafe.Pointer(&bl.bitset[idx>>6])) + uintptr((idx%64)>>3))
-	*(*uint8)(ptr) |= mask[idx%8]
+	ptr := unsafe.Pointer(&bl.bitset[idx>>6])
+	*(*uint64)(ptr) |= mask[idx%64]
 }
 
 func (bl *Bloom) getSet(idx uint64) bool {
-	ptr := unsafe.Pointer(uintptr(unsafe.Pointer(&bl.bitset[idx>>6])) + uintptr((idx%64)>>3))
-	res := *(*uint8)(ptr)&mask[idx%8] > 0
-	*(*uint8)(ptr) |= mask[idx%8]
+	ptr := unsafe.Pointer(&bl.bitset[idx>>6])
+	res := *(*uint64)(ptr)&mask[idx%64] > 0
+	*(*uint64)(ptr) |= mask[idx%64]
 	return res
 }
 
@@ -236,8 +244,8 @@ func (bl *Bloom) getSet(idx uint64) bool {
 // check if bit[idx] of bitset is set
 // returns true/false
 func (bl *Bloom) isSet(idx uint64) bool {
-	ptr := unsafe.Pointer(uintptr(unsafe.Pointer(&bl.bitset[idx>>6])) + uintptr((idx%64)>>3))
-	return *(*uint8)(ptr)&mask[idx%8] > 0
+	ptr := unsafe.Pointer(&bl.bitset[idx>>6])
+	return *(*uint64)(ptr)&mask[idx%64] > 0
 }
 
 // JSONMarshal
