@@ -26,6 +26,7 @@ import (
 	"errors"
 	"math"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 )
 
@@ -158,9 +159,11 @@ func (bl *Bloom) Add(entry []byte) {
 // AddTS
 // Thread safe: Mutex.Lock the bloomfilter for the time of processing the entry
 func (bl *Bloom) AddTS(entry []byte) {
-	bl.Mtx.Lock()
-	defer bl.Mtx.Unlock()
-	bl.Add(entry[:])
+	bl.content++
+	l, h := bl.sipHash(entry)
+	for i := uint64(0); i < (*bl).setLocs; i++ {
+		bl.setAtomic((h + i*l) & (*bl).size)
+	}
 }
 
 // Has
@@ -183,9 +186,17 @@ func (bl *Bloom) Has(entry []byte) bool {
 // HasTS
 // Thread safe: Mutex.Lock the bloomfilter for the time of processing the entry
 func (bl *Bloom) HasTS(entry []byte) bool {
-	bl.Mtx.RLock()
-	defer bl.Mtx.RUnlock()
-	return bl.Has(entry[:])
+	l, h := bl.sipHash(entry)
+	res := true
+	for i := uint64(0); i < bl.setLocs; i++ {
+		res = res && bl.isSetAtomic((h+i*l)&bl.size)
+		// Branching here (early escape) is not worth it
+		// This is my conclusion from benchmarks
+		// if !res {
+		//   return false
+		// }
+	}
+	return res
 }
 
 // AddIfNotHas
@@ -210,9 +221,16 @@ func (bl *Bloom) AddIfNotHas(entry []byte) (added bool) {
 // returns true if entry was added
 // returns false if entry was allready registered in the bloomfilter
 func (bl *Bloom) AddIfNotHasTS(entry []byte) (added bool) {
-	bl.Mtx.Lock()
-	defer bl.Mtx.Unlock()
-	return bl.AddIfNotHas(entry[:])
+	l, h := bl.sipHash(entry)
+	contained := true
+	for i := uint64(0); i < bl.setLocs; i++ {
+		prev := bl.getSetAtomic((h + i*l) & bl.size)
+		contained = contained && prev
+	}
+	if !contained {
+		bl.content++
+	}
+	return !contained
 }
 
 // Clear
@@ -229,23 +247,45 @@ func (bl *Bloom) Clear() {
 // Set
 // set the bit[idx] of bitsit
 func (bl *Bloom) set(idx uint64) {
-	ptr := unsafe.Pointer(&bl.bitset[idx>>6])
-	*(*uint64)(ptr) |= mask[idx%64]
+	ptr := (*uint64)(&bl.bitset[idx>>6])
+	*ptr |= mask[idx%64]
+
 }
 
+func (bl *Bloom) setAtomic(idx uint64) {
+	ptr := (*uint64)(&bl.bitset[idx>>6])
+	old := *ptr
+	for !atomic.CompareAndSwapUint64(ptr, old, old|mask[idx%64]) {
+		old = *ptr
+	}
+}
 func (bl *Bloom) getSet(idx uint64) bool {
-	ptr := unsafe.Pointer(&bl.bitset[idx>>6])
-	res := *(*uint64)(ptr)&mask[idx%64] > 0
-	*(*uint64)(ptr) |= mask[idx%64]
-	return res
+	ptr := (*uint64)(&bl.bitset[idx>>6])
+	old := *ptr
+	*ptr |= old | mask[idx%64]
+	return old&mask[idx%64] > 0
+}
+
+func (bl *Bloom) getSetAtomic(idx uint64) bool {
+	ptr := (*uint64)(&bl.bitset[idx>>6])
+	old := *ptr
+	for !atomic.CompareAndSwapUint64(ptr, old, old|mask[idx%64]) {
+		old = *ptr
+	}
+	return old&mask[idx%64] > 0
 }
 
 // IsSet
 // check if bit[idx] of bitset is set
 // returns true/false
 func (bl *Bloom) isSet(idx uint64) bool {
-	ptr := unsafe.Pointer(&bl.bitset[idx>>6])
-	return *(*uint64)(ptr)&mask[idx%64] > 0
+	ptr := (*uint64)(&bl.bitset[idx>>6])
+	return *ptr&mask[idx%64] > 0
+}
+
+func (bl *Bloom) isSetAtomic(idx uint64) bool {
+	ptr := (*uint64)(&bl.bitset[idx>>6])
+	return atomic.LoadUint64(ptr)&mask[idx%64] > 0
 }
 
 // JSONMarshal
