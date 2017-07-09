@@ -62,7 +62,7 @@ func New(params ...float64) (bloomfilter *Bloom, err error) {
 			return nil, ErrInvalidParms
 		}
 		if params[1] < 1 {
-			entries, locs = calcSizeByWrongPositives(params[0], params[1])
+			entries, locs = calcSizeByWrongPositives(math.Max(params[0], 1), params[1])
 		} else {
 			entries, locs = uint64(params[0]), uint64(params[1])
 		}
