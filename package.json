@@ -1,10 +1,10 @@
 {
-  "author": "kubuxu",
+  "author": "AndreasBriese",
   "bugs": {
-    "url": "https://github.com/gxed/bbloom"
+    "url": "https://github.com/ipfs/bbloom"
   },
   "gx": {
-    "dvcsimport": "github.com/gxed/bbloom"
+    "dvcsimport": "github.com/ipfs/bbloom"
   },
   "gxVersion": "0.7.0",
   "language": "go",
