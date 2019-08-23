@@ -162,6 +162,7 @@ func (bl *Bloom) Has(entry []byte) bool {
 		res = res && bl.isSet((h+i*l)&bl.size)
 		// Branching here (early escape) is not worth it
 		// This is my conclusion from benchmarks
+		// (prevents loop unrolling)
 		// if !res {
 		//   return false
 		// }
@@ -209,8 +210,9 @@ func (bl *Bloom) AddIfNotHasTS(entry []byte) (added bool) {
 // Clear
 // resets the Bloom filter
 func (bl *Bloom) Clear() {
-	for i, _ := range (*bl).bitset {
-		bl.bitset[i] = 0
+	bs := bl.bitset // important performance optimization.
+	for i := range bs {
+		bs[i] = 0
 	}
 	bl.content = 0
 }
