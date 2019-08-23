@@ -235,19 +235,29 @@ func (bl *Bloom) isSet(idx uint64) bool {
 	return bl.bitset[idx>>6]&(1<<(idx%64)) > 0
 }
 
-// JSONMarshal
-// returns JSON-object (type bloomJSONImExport) as []byte
-func (bl *Bloom) JSONMarshal() ([]byte, error) {
-	bl.Mtx.RLock()
-	defer bl.Mtx.RUnlock()
+func (bl *Bloom) marshal() bloomJSONImExport {
 	bloomImEx := bloomJSONImExport{}
 	bloomImEx.SetLocs = uint64(bl.setLocs)
 	bloomImEx.FilterSet = make([]byte, len(bl.bitset)<<3)
 	for i, w := range bl.bitset {
 		binary.BigEndian.PutUint64(bloomImEx.FilterSet[i<<3:], w)
 	}
-	data, err := json.Marshal(bloomImEx)
+	return bloomImEx
+}
+
+// JSONMarshal
+// returns JSON-object (type bloomJSONImExport) as []byte
+func (bl *Bloom) JSONMarshal() ([]byte, error) {
+	data, err := json.Marshal(bl.marshal())
 	return data, err
+}
+
+// JSONMarshalTS is a thread-safe version of JSONMarshal
+func (bl *Bloom) JSONMarshalTS() ([]byte, error) {
+	bl.Mtx.RLock()
+	export := bl.marshal()
+	bl.Mtx.RUnlock()
+	return json.Marshal(export)
 }
 
 // JSONUnmarshal
@@ -269,6 +279,13 @@ func (bl *Bloom) FillRatio() float64 {
 		count += uint64(bits.OnesCount64(b))
 	}
 	return float64(count) / float64(bl.size+1)
+}
+
+// FillRatioTS is a thread-save version of FillRatio
+func (bl *Bloom) FillRatioTS() float64 {
+	bl.Mtx.RLock()
+	defer bl.Mtx.RUnlock()
+	return bl.FillRatio()
 }
 
 // // alternative hashFn
