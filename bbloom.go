@@ -21,7 +21,6 @@
 package bbloom
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -268,9 +267,7 @@ func (bl *Bloom) JSONMarshalTS() ([]byte, error) {
 func JSONUnmarshal(dbData []byte) *Bloom {
 	bloomImEx := bloomJSONImExport{}
 	json.Unmarshal(dbData, &bloomImEx)
-	buf := bytes.NewBuffer(bloomImEx.FilterSet)
-	bs := buf.Bytes()
-	bf := NewWithBoolset(bs, bloomImEx.SetLocs)
+	bf := NewWithBoolset(bloomImEx.FilterSet, bloomImEx.SetLocs)
 	return bf
 }
 
