@@ -112,6 +112,7 @@ type Bloom struct {
 	content uint64
 }
 
+// ElementsAdded returns the number of elements added to the bloom filter.
 func (bl *Bloom) ElementsAdded() uint64 {
 	return bl.content
 }
@@ -206,16 +207,19 @@ func (bl *Bloom) AddIfNotHasTS(entry []byte) (added bool) {
 // Clear
 // resets the Bloom filter
 func (bl *Bloom) Clear() {
-	bl.Mtx.Lock()
-	defer bl.Mtx.Unlock()
 	for i, _ := range (*bl).bitset {
 		bl.bitset[i] = 0
 	}
 	bl.content = 0
 }
 
-// Set
-// set the bit[idx] of bitsit
+// ClearTS clears the bloom filter (thread safe).
+func (bl *Bloom) ClearTS() {
+	bl.Mtx.Lock()
+	defer bl.Mtx.Unlock()
+	bl.Clear()
+}
+
 func (bl *Bloom) set(idx uint64) {
 	bl.bitset[idx>>6] |= 1 << (idx % 64)
 }
@@ -227,9 +231,6 @@ func (bl *Bloom) getSet(idx uint64) bool {
 	return (cur & bit) > 0
 }
 
-// IsSet
-// check if bit[idx] of bitset is set
-// returns true/false
 func (bl *Bloom) isSet(idx uint64) bool {
 	return bl.bitset[idx>>6]&(1<<(idx%64)) > 0
 }
@@ -261,6 +262,7 @@ func JSONUnmarshal(dbData []byte) *Bloom {
 	return bf
 }
 
+// FillRatio returns the fraction of bits set.
 func (bl *Bloom) FillRatio() float64 {
 	count := uint64(0)
 	for _, b := range bl.bitset {
