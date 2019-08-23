@@ -24,6 +24,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"log"
 	"math"
 	"math/bits"
 	"sync"
@@ -248,17 +249,24 @@ func (bl *Bloom) marshal() bloomJSONImExport {
 
 // JSONMarshal
 // returns JSON-object (type bloomJSONImExport) as []byte
-func (bl *Bloom) JSONMarshal() ([]byte, error) {
+func (bl *Bloom) JSONMarshal() []byte {
 	data, err := json.Marshal(bl.marshal())
-	return data, err
+	if err != nil {
+		log.Fatal("json.Marshal failed: ", err)
+	}
+	return data
 }
 
 // JSONMarshalTS is a thread-safe version of JSONMarshal
-func (bl *Bloom) JSONMarshalTS() ([]byte, error) {
+func (bl *Bloom) JSONMarshalTS() []byte {
 	bl.Mtx.RLock()
 	export := bl.marshal()
 	bl.Mtx.RUnlock()
-	return json.Marshal(export)
+	data, err := json.Marshal(export)
+	if err != nil {
+		log.Fatal("json.Marshal failed: ", err)
+	}
+	return data
 }
 
 // JSONUnmarshal

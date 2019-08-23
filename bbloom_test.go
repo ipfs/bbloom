@@ -69,13 +69,13 @@ func TestM_JSON(t *testing.T) {
 		}
 	}
 
-	Json, err := bf.JSONMarshal()
+	json := bf.JSONMarshal()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// create new bloomfilter from bloomfilter's JSON representation
-	bf2, err := JSONUnmarshal(Json)
+	bf2, err := JSONUnmarshal(json)
 	if err != nil {
 		t.Fatal(err)
 	}
