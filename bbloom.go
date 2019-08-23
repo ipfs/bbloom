@@ -81,13 +81,13 @@ func New(params ...float64) (bloomfilter *Bloom, err error) {
 // NewWithBoolset
 // takes a []byte slice and number of locs per entry
 // returns the bloomfilter with a bitset populated according to the input []byte
-func NewWithBoolset(bs *[]byte, locs uint64) (bloomfilter *Bloom) {
-	bloomfilter, err := New(float64(len(*bs)<<3), float64(locs))
+func NewWithBoolset(bs []byte, locs uint64) (bloomfilter *Bloom) {
+	bloomfilter, err := New(float64(len(bs)<<3), float64(locs))
 	if err != nil {
 		panic(err) // Should never happen
 	}
 	for i := range bloomfilter.bitset {
-		bloomfilter.bitset[i] = binary.BigEndian.Uint64((*bs)[i<<3:])
+		bloomfilter.bitset[i] = binary.BigEndian.Uint64((bs)[i<<3:])
 	}
 	return bloomfilter
 }
@@ -270,7 +270,7 @@ func JSONUnmarshal(dbData []byte) *Bloom {
 	json.Unmarshal(dbData, &bloomImEx)
 	buf := bytes.NewBuffer(bloomImEx.FilterSet)
 	bs := buf.Bytes()
-	bf := NewWithBoolset(&bs, bloomImEx.SetLocs)
+	bf := NewWithBoolset(bs, bloomImEx.SetLocs)
 	return bf
 }
 
