@@ -264,11 +264,14 @@ func (bl *Bloom) JSONMarshalTS() ([]byte, error) {
 // JSONUnmarshal
 // takes JSON-Object (type bloomJSONImExport) as []bytes
 // returns bloom32 / bloom64 object
-func JSONUnmarshal(dbData []byte) *Bloom {
+func JSONUnmarshal(dbData []byte) (*Bloom, error) {
 	bloomImEx := bloomJSONImExport{}
-	json.Unmarshal(dbData, &bloomImEx)
+	err := json.Unmarshal(dbData, &bloomImEx)
+	if err != nil {
+		return nil, err
+	}
 	bf := NewWithBoolset(bloomImEx.FilterSet, bloomImEx.SetLocs)
-	return bf
+	return bf, nil
 }
 
 // FillRatio returns the fraction of bits set.
