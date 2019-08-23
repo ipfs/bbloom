@@ -148,8 +148,8 @@ func (bl *Bloom) Add(entry []byte) {
 // Thread safe: Mutex.Lock the bloomfilter for the time of processing the entry
 func (bl *Bloom) AddTS(entry []byte) {
 	bl.Mtx.Lock()
-	defer bl.Mtx.Unlock()
-	bl.Add(entry[:])
+	bl.Add(entry)
+	bl.Mtx.Unlock()
 }
 
 // Has
@@ -173,8 +173,9 @@ func (bl *Bloom) Has(entry []byte) bool {
 // Thread safe: Mutex.Lock the bloomfilter for the time of processing the entry
 func (bl *Bloom) HasTS(entry []byte) bool {
 	bl.Mtx.RLock()
-	defer bl.Mtx.RUnlock()
-	return bl.Has(entry[:])
+	has := bl.Has(entry[:])
+	bl.Mtx.RUnlock()
+	return has
 }
 
 // AddIfNotHas
@@ -200,8 +201,9 @@ func (bl *Bloom) AddIfNotHas(entry []byte) (added bool) {
 // returns false if entry was allready registered in the bloomfilter
 func (bl *Bloom) AddIfNotHasTS(entry []byte) (added bool) {
 	bl.Mtx.Lock()
-	defer bl.Mtx.Unlock()
-	return bl.AddIfNotHas(entry[:])
+	added = bl.AddIfNotHas(entry[:])
+	bl.Mtx.Unlock()
+	return added
 }
 
 // Clear
@@ -216,8 +218,8 @@ func (bl *Bloom) Clear() {
 // ClearTS clears the bloom filter (thread safe).
 func (bl *Bloom) ClearTS() {
 	bl.Mtx.Lock()
-	defer bl.Mtx.Unlock()
 	bl.Clear()
+	bl.Mtx.Unlock()
 }
 
 func (bl *Bloom) set(idx uint64) {
@@ -235,19 +237,29 @@ func (bl *Bloom) isSet(idx uint64) bool {
 	return bl.bitset[idx>>6]&(1<<(idx%64)) > 0
 }
 
-// JSONMarshal
-// returns JSON-object (type bloomJSONImExport) as []byte
-func (bl *Bloom) JSONMarshal() ([]byte, error) {
-	bl.Mtx.RLock()
-	defer bl.Mtx.RUnlock()
+func (bl *Bloom) marshal() bloomJSONImExport {
 	bloomImEx := bloomJSONImExport{}
 	bloomImEx.SetLocs = uint64(bl.setLocs)
 	bloomImEx.FilterSet = make([]byte, len(bl.bitset)<<3)
 	for i, w := range bl.bitset {
 		binary.BigEndian.PutUint64(bloomImEx.FilterSet[i<<3:], w)
 	}
-	data, err := json.Marshal(bloomImEx)
+	return bloomImEx
+}
+
+// JSONMarshal
+// returns JSON-object (type bloomJSONImExport) as []byte
+func (bl *Bloom) JSONMarshal() ([]byte, error) {
+	data, err := json.Marshal(bl.marshal())
 	return data, err
+}
+
+// JSONMarshalTS is a thread-safe version of JSONMarshal
+func (bl *Bloom) JSONMarshalTS() ([]byte, error) {
+	bl.Mtx.RLock()
+	export := bl.marshal()
+	bl.Mtx.RUnlock()
+	return json.Marshal(export)
 }
 
 // JSONUnmarshal
@@ -269,6 +281,14 @@ func (bl *Bloom) FillRatio() float64 {
 		count += uint64(bits.OnesCount64(b))
 	}
 	return float64(count) / float64(bl.size+1)
+}
+
+// FillRatioTS is a thread-save version of FillRatio
+func (bl *Bloom) FillRatioTS() float64 {
+	bl.Mtx.RLock()
+	fr := bl.FillRatio()
+	bl.Mtx.RUnlock()
+	return fr
 }
 
 // // alternative hashFn
