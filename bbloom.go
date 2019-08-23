@@ -21,10 +21,10 @@
 package bbloom
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"log"
 	"math"
 	"math/bits"
 	"sync"
@@ -81,13 +81,13 @@ func New(params ...float64) (bloomfilter *Bloom, err error) {
 // NewWithBoolset
 // takes a []byte slice and number of locs per entry
 // returns the bloomfilter with a bitset populated according to the input []byte
-func NewWithBoolset(bs *[]byte, locs uint64) (bloomfilter *Bloom) {
-	bloomfilter, err := New(float64(len(*bs)<<3), float64(locs))
+func NewWithBoolset(bs []byte, locs uint64) (bloomfilter *Bloom) {
+	bloomfilter, err := New(float64(len(bs)<<3), float64(locs))
 	if err != nil {
 		panic(err) // Should never happen
 	}
 	for i := range bloomfilter.bitset {
-		bloomfilter.bitset[i] = binary.BigEndian.Uint64((*bs)[i<<3:])
+		bloomfilter.bitset[i] = binary.BigEndian.Uint64((bs)[i<<3:])
 	}
 	return bloomfilter
 }
@@ -249,29 +249,37 @@ func (bl *Bloom) marshal() bloomJSONImExport {
 
 // JSONMarshal
 // returns JSON-object (type bloomJSONImExport) as []byte
-func (bl *Bloom) JSONMarshal() ([]byte, error) {
+func (bl *Bloom) JSONMarshal() []byte {
 	data, err := json.Marshal(bl.marshal())
-	return data, err
+	if err != nil {
+		log.Fatal("json.Marshal failed: ", err)
+	}
+	return data
 }
 
 // JSONMarshalTS is a thread-safe version of JSONMarshal
-func (bl *Bloom) JSONMarshalTS() ([]byte, error) {
+func (bl *Bloom) JSONMarshalTS() []byte {
 	bl.Mtx.RLock()
 	export := bl.marshal()
 	bl.Mtx.RUnlock()
-	return json.Marshal(export)
+	data, err := json.Marshal(export)
+	if err != nil {
+		log.Fatal("json.Marshal failed: ", err)
+	}
+	return data
 }
 
 // JSONUnmarshal
 // takes JSON-Object (type bloomJSONImExport) as []bytes
 // returns bloom32 / bloom64 object
-func JSONUnmarshal(dbData []byte) *Bloom {
+func JSONUnmarshal(dbData []byte) (*Bloom, error) {
 	bloomImEx := bloomJSONImExport{}
-	json.Unmarshal(dbData, &bloomImEx)
-	buf := bytes.NewBuffer(bloomImEx.FilterSet)
-	bs := buf.Bytes()
-	bf := NewWithBoolset(&bs, bloomImEx.SetLocs)
-	return bf
+	err := json.Unmarshal(dbData, &bloomImEx)
+	if err != nil {
+		return nil, err
+	}
+	bf := NewWithBoolset(bloomImEx.FilterSet, bloomImEx.SetLocs)
+	return bf, nil
 }
 
 // FillRatio returns the fraction of bits set.
