@@ -100,7 +100,7 @@ func TestFillRatio(t *testing.T) {
 	}
 }
 
-func ExampleM_NewAddHasAddIfNotHas() {
+func ExampleBloom_AddIfNotHas() {
 	bf, err := New(float64(512), float64(1))
 	if err != nil {
 		panic(err)

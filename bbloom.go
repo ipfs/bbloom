@@ -22,15 +22,13 @@ package bbloom
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"math"
+	"math/bits"
 	"sync"
-	"unsafe"
 )
-
-// helper
-var mask = []uint8{1, 2, 4, 8, 16, 32, 64, 128}
 
 func getSize(ui64 uint64) (size uint64, exponent uint64) {
 	if ui64 < uint64(512) {
@@ -88,10 +86,8 @@ func NewWithBoolset(bs *[]byte, locs uint64) (bloomfilter *Bloom) {
 	if err != nil {
 		panic(err) // Should never happen
 	}
-	ptr := uintptr(unsafe.Pointer(&bloomfilter.bitset[0]))
-	for _, b := range *bs {
-		*(*uint8)(unsafe.Pointer(ptr)) = b
-		ptr++
+	for i := range bloomfilter.bitset {
+		bloomfilter.bitset[i] = binary.BigEndian.Uint64((*bs)[i<<3:])
 	}
 	return bloomfilter
 }
@@ -221,23 +217,21 @@ func (bl *Bloom) Clear() {
 // Set
 // set the bit[idx] of bitsit
 func (bl *Bloom) set(idx uint64) {
-	ptr := unsafe.Pointer(uintptr(unsafe.Pointer(&bl.bitset[idx>>6])) + uintptr((idx%64)>>3))
-	*(*uint8)(ptr) |= mask[idx%8]
+	bl.bitset[idx>>6] |= 1 << (idx % 64)
 }
 
 func (bl *Bloom) getSet(idx uint64) bool {
-	ptr := unsafe.Pointer(uintptr(unsafe.Pointer(&bl.bitset[idx>>6])) + uintptr((idx%64)>>3))
-	res := *(*uint8)(ptr)&mask[idx%8] > 0
-	*(*uint8)(ptr) |= mask[idx%8]
-	return res
+	cur := bl.bitset[idx>>6]
+	bit := uint64(1 << (idx % 64))
+	bl.bitset[idx>>6] = cur | bit
+	return (cur & bit) > 0
 }
 
 // IsSet
 // check if bit[idx] of bitset is set
 // returns true/false
 func (bl *Bloom) isSet(idx uint64) bool {
-	ptr := unsafe.Pointer(uintptr(unsafe.Pointer(&bl.bitset[idx>>6])) + uintptr((idx%64)>>3))
-	return *(*uint8)(ptr)&mask[idx%8] > 0
+	return bl.bitset[idx>>6]&(1<<(idx%64)) > 0
 }
 
 // JSONMarshal
@@ -248,10 +242,8 @@ func (bl *Bloom) JSONMarshal() ([]byte, error) {
 	bloomImEx := bloomJSONImExport{}
 	bloomImEx.SetLocs = uint64(bl.setLocs)
 	bloomImEx.FilterSet = make([]byte, len(bl.bitset)<<3)
-	ptr := uintptr(unsafe.Pointer(&bl.bitset[0]))
-	for i := range bloomImEx.FilterSet {
-		bloomImEx.FilterSet[i] = *(*byte)(unsafe.Pointer(ptr))
-		ptr++
+	for i, w := range bl.bitset {
+		binary.BigEndian.PutUint64(bloomImEx.FilterSet[i<<3:], w)
 	}
 	data, err := json.Marshal(bloomImEx)
 	return data, err
@@ -272,22 +264,9 @@ func JSONUnmarshal(dbData []byte) *Bloom {
 func (bl *Bloom) FillRatio() float64 {
 	count := uint64(0)
 	for _, b := range bl.bitset {
-		count += uint64(popcount(b))
+		count += uint64(bits.OnesCount64(b))
 	}
 	return float64(count) / float64(bl.size+1)
-}
-
-func popcount(x uint64) uint {
-	const (
-		m1  = 0x5555555555555555 //binary: 0101...
-		m2  = 0x3333333333333333 //binary: 00110011..
-		m4  = 0x0f0f0f0f0f0f0f0f //binary:  4 zeros,  4 ones ...
-		h01 = 0x0101010101010101 //the sum of 256 to the power of 0,1,2,3...
-	)
-	x -= (x >> 1) & m1             //put count of each 2 bits into those 2 bits
-	x = (x & m2) + ((x >> 2) & m2) //put count of each 4 bits into those 4 bits
-	x = (x + (x >> 4)) & m4        //put count of each 8 bits into those 8 bits
-	return uint((x * h01) >> 56)
 }
 
 // // alternative hashFn
