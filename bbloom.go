@@ -48,8 +48,10 @@ func calcSizeByWrongPositives(numEntries, wrongs float64) (uint64, uint64) {
 	return uint64(size), uint64(locs)
 }
 
-var ErrUsage = errors.New("usage: New(float64(number_of_entries), float64(number_of_hashlocations)) i.e. New(float64(1000), float64(3)) or New(float64(number_of_entries), float64(ratio_of_false_positives)) i.e. New(float64(1000), float64(0.03))")
-var ErrInvalidParms = errors.New("One of parameters was outside of allowed range")
+var (
+	ErrUsage        = errors.New("usage: New(float64(number_of_entries), float64(number_of_hashlocations)) i.e. New(float64(1000), float64(3)) or New(float64(number_of_entries), float64(ratio_of_false_positives)) i.e. New(float64(1000), float64(0.03))")
+	ErrInvalidParms = errors.New("one of the parameters was outside of allowed range")
+)
 
 // New
 // returns a new bloomfilter
