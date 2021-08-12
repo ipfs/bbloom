@@ -1,30 +1,20 @@
-## bbloom: a bitset Bloom filter for go/golang
-===
+# bbloom: a bitset Bloom filter for go/golang
 
-package implements a fast bloom filter with real 'bitset' and JSONMarshal/JSONUnmarshal to store/reload the Bloom filter. 
+This package implements a fast bloom filter with real 'bitset' and JSONMarshal/JSONUnmarshal to store/reload the Bloom filter.
+It is used in the go-ipfs [blockstore code](https://github.com/ipfs/go-ipfs-blockstore).
 
-NOTE: the package uses unsafe.Pointer to set and read the bits from the bitset. If you're uncomfortable with using the unsafe package, please consider using my bloom filter package at github.com/AndreasBriese/bloom
-
-===
-
-changelog 11/2015: new thread safe methods AddTS(), HasTS(), AddIfNotHasTS() following a suggestion from Srdjan Marinovic (github @a-little-srdjan), who used this to code a bloomfilter cache.  
-
-This bloom filter was developed to strengthen a website-log database and was tested and optimized for this log-entry mask: "2014/%02i/%02i %02i:%02i:%02i /info.html". 
-Nonetheless bbloom should work with any other form of entries. 
-
-~~Hash function is a modified Berkeley DB sdbm hash (to optimize for smaller strings). sdbm  http://www.cse.yorku.ca/~oz/hash.html~~
-
-Found sipHash (SipHash-2-4, a fast short-input PRF created by Jean-Philippe Aumasson and Daniel J. Bernstein.) to be about as fast. sipHash had been ported by Dimtry Chestnyk to Go (github.com/dchest/siphash )
+This package provides both unlocked and thread-safe (RWMutex) versions of operations.
+The hash used is SipHash-2-4 split in half, shifted, then fed through the original double-hashing scheme.
 
 Minimum hashset size is: 512 ([4]uint64; will be set automatically). 
 
-###install
+## install
 
 ```sh
 go get github.com/AndreasBriese/bbloom
 ```
 
-###test
+## test
 + change to folder ../bbloom 
 + create wordlist in file "words.txt" (you might use `python permut.py`)
 + run 'go test -bench=.' within the folder
@@ -33,11 +23,9 @@ go get github.com/AndreasBriese/bbloom
 go test -bench=.
 ```
 
-~~If you've installed the GOCONVEY TDD-framework http://goconvey.co/ you can run the tests automatically.~~
-
 using go's testing framework now (have in mind that the op timing is related to 65536 operations of Add, Has, AddIfNotHas respectively)
 
-### usage
+## usage
 
 after installation add
 
@@ -105,14 +93,14 @@ isNotInNew := bfNew.Has([]byte("Butter")) // should be false
 
 to work with the bloom filter.
 
-### why 'fast'? 
+## why 'fast'? 
 
 It's about 3 times faster than William Fitzgeralds bitset bloom filter https://github.com/willf/bloom . And it is about so fast as my []bool set variant for Boom filters (see https://github.com/AndreasBriese/bloom ) but having a 8times smaller memory footprint: 
 
 	
 	Bloom filter (filter size 524288, 7 hashlocs)
 	github.com/AndreasBriese/bbloom 'Add' 65536 items (10 repetitions): 6595800 ns (100 ns/op)
-    github.com/AndreasBriese/bbloom 'Has' 65536 items (10 repetitions): 5986600 ns (91 ns/op)
+        github.com/AndreasBriese/bbloom 'Has' 65536 items (10 repetitions): 5986600 ns (91 ns/op)
 	github.com/AndreasBriese/bloom 'Add' 65536 items (10 repetitions): 6304684 ns (96 ns/op)
 	github.com/AndreasBriese/bloom 'Has' 65536 items (10 repetitions): 6568663 ns (100 ns/op)
 	
@@ -125,5 +113,6 @@ It's about 3 times faster than William Fitzgeralds bitset bloom filter https://g
 
 (on MBPro15 OSX10.8.5 i7 4Core 2.4Ghz)
 
+With 32bit bloom filters (bloom32) using modified sdbm hash, bloom32 does hashing with only 2 bit shifts, one xor and one substraction per byte. smdb is about as fast as fnv64a but gives less collisions with the dataset (see mask above). bloom.New(float64(10 * 1<<16),float64(7)) populated with 1<<16 random items from the dataset (see above) and tested against the rest results in less than 0.05% collisions.   
 
-With 32bit bloom filters (bloom32) using modified sdbm, bloom32 does hashing with only 2 bit shifts, one xor and one substraction per byte. smdb is about as fast as fnv64a but gives less collisions with the dataset (see mask above). bloom.New(float64(10 * 1<<16),float64(7)) populated with 1<<16 random items from the dataset (see above) and tested against the rest results in less than 0.05% collisions.   
+SipHash-2-4 was found to be faster, so we are using it now. sipHash had been ported by Dimtry Chestnyk to Go (https://github.com/dchest/siphash).
