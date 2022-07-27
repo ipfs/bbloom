@@ -50,7 +50,7 @@ func TestM_NumberOfWrongs(t *testing.T) {
 			cnt++
 		}
 	}
-	fmt.Printf("Bloomfilter New(7* 2**16, 7) (-> size=%v bit): \n            Check for 'false positives': %v wrong positive 'Has' results on 2**16 entries => %v %%\n", len(bf.bitset)<<6, cnt, float64(cnt)/float64(n))
+	fmt.Printf("Bloomfilter New(7* 2**16, 7) (-> size=%v bit): \n            Check for 'false positives': %v wrong positive 'Has' results on 2**16 entries => %v %%\n", len(bf.bitset)<<6, cnt, math.Round(float64(cnt)/float64(n)*100*100)/100)
 
 }
 
