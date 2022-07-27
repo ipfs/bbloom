@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"strconv"
 	"testing"
 )
 
@@ -26,6 +27,8 @@ func TestMain(m *testing.M) {
 	for i := range wordlist1 {
 		if scanner.Scan() {
 			wordlist1[i] = []byte(scanner.Text())
+		} else {
+			wordlist1[i] = []byte(string(wordlist1[0]) + strconv.Itoa(i))
 		}
 	}
 	if err := scanner.Err(); err != nil {
