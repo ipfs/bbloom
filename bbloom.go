@@ -101,7 +101,6 @@ type bloomJSONImExport struct {
 	SetLocs   uint64
 }
 
-//
 // Bloom filter
 type Bloom struct {
 	Mtx     sync.RWMutex
