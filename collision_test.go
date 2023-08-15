@@ -1,13 +1,12 @@
 package bbloom
 
 import (
-	"math/rand"
+	"crypto/rand"
 	"testing"
 	"time"
 )
 
 func TestCollisionRate(t *testing.T) {
-	rand.Seed(time.Now().UTC().UnixNano())
 	N := 1 << 20
 	M := N * 12
 	K := 2
