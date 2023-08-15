@@ -3,7 +3,6 @@ package bbloom
 import (
 	"crypto/rand"
 	"testing"
-	"time"
 )
 
 func TestCollisionRate(t *testing.T) {
