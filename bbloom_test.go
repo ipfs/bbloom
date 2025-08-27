@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"strconv"
 	"testing"
 )
 
@@ -26,6 +27,8 @@ func TestMain(m *testing.M) {
 	for i := range wordlist1 {
 		if scanner.Scan() {
 			wordlist1[i] = []byte(scanner.Text())
+		} else {
+			wordlist1[i] = []byte(string(wordlist1[0]) + strconv.Itoa(i))
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -50,7 +53,7 @@ func TestM_NumberOfWrongs(t *testing.T) {
 			cnt++
 		}
 	}
-	fmt.Printf("Bloomfilter New(7* 2**16, 7) (-> size=%v bit): \n            Check for 'false positives': %v wrong positive 'Has' results on 2**16 entries => %v %%\n", len(bf.bitset)<<6, cnt, float64(cnt)/float64(n))
+	fmt.Printf("Bloomfilter New(7* 2**16, 7) (-> size=%v bit): \n            Check for 'false positives': %v wrong positive 'Has' results on 2**16 entries => %v %%\n", len(bf.bitset)<<6, cnt, math.Round(float64(cnt)/float64(n)*100*100)/100)
 
 }
 
