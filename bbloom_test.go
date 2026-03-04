@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -81,6 +82,98 @@ func TestM_JSON(t *testing.T) {
 		t.Errorf("FAILED !AddIfNotHas = %v; want %v", cnt2, shallBe)
 	}
 }
+func TestNewWithKeys(t *testing.T) {
+	k0 := uint64(0x0123456789abcdef)
+	k1 := uint64(0xfedcba9876543210)
+
+	bf1, err := NewWithKeys(k0, k1, float64(n*10), float64(7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bf2, err := New(float64(n*10), float64(7))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// same entry should hash to different positions with different keys
+	entry := []byte("test-entry")
+	l1, h1 := bf1.sipHash(entry)
+	l2, h2 := bf2.sipHash(entry)
+	if l1 == l2 && h1 == h2 {
+		t.Fatal("custom keys produced same hash as default keys")
+	}
+
+	// filter should still work correctly with custom keys
+	for i := range wordlist1 {
+		bf1.Add(wordlist1[i])
+	}
+	for i := range wordlist1 {
+		if !bf1.Has(wordlist1[i]) {
+			t.Fatalf("Has(%q) = false after Add", wordlist1[i])
+		}
+	}
+}
+
+func TestNewWithKeysJSON(t *testing.T) {
+	k0 := uint64(0x0123456789abcdef)
+	k1 := uint64(0xfedcba9876543210)
+
+	bf, err := NewWithKeys(k0, k1, float64(n*10), float64(7))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	entries := wordlist1[:1000]
+	for _, e := range entries {
+		bf.Add(e)
+	}
+
+	data := bf.JSONMarshal()
+
+	bf2, err := JSONUnmarshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// keys should be preserved
+	if bf2.k0 != k0 || bf2.k1 != k1 {
+		t.Fatalf("keys not preserved: got k0=%x k1=%x, want k0=%x k1=%x", bf2.k0, bf2.k1, k0, k1)
+	}
+
+	for _, e := range entries {
+		if !bf2.Has(e) {
+			t.Fatalf("custom-key filter lost entry %q after JSON round-trip", e)
+		}
+	}
+}
+
+func TestDefaultKeysOmittedFromJSON(t *testing.T) {
+	bf, err := New(float64(512), float64(3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bf.Add([]byte("test"))
+
+	data := bf.JSONMarshal()
+	s := string(data)
+	if strings.Contains(s, "K0") || strings.Contains(s, "K1") {
+		t.Fatalf("default keys should not appear in JSON: %s", s)
+	}
+
+	// custom keys should appear
+	bf2, err := NewWithKeys(42, 99, float64(512), float64(3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bf2.Add([]byte("test"))
+
+	data2 := bf2.JSONMarshal()
+	s2 := string(data2)
+	if !strings.Contains(s2, "K0") || !strings.Contains(s2, "K1") {
+		t.Fatalf("custom keys should appear in JSON: %s", s2)
+	}
+}
+
 func TestFillRatio(t *testing.T) {
 	bf, err := New(float64(512), float64(7))
 	if err != nil {
