@@ -81,11 +81,12 @@ func New(params ...float64) (bloomfilter *Bloom, err error) {
 	}
 	size, exponent := getSize(uint64(entries))
 	bloomfilter = &Bloom{
-		sizeExp: exponent,
-		size:    size - 1,
-		setLocs: locs,
-		shift:   64 - exponent,
-		bitset:  make([]uint64, size>>6),
+		sizeExp:     exponent,
+		size:        size - 1,
+		setLocs:     locs,
+		shift:       64 - exponent,
+		bitset:      make([]uint64, size>>6),
+		hashVersion: 1,
 	}
 	return bloomfilter, nil
 }
@@ -109,6 +110,7 @@ func NewWithBoolset(bs []byte, locs uint64) (bloomfilter *Bloom) {
 type bloomJSONImExport struct {
 	FilterSet []byte
 	SetLocs   uint64
+	Version   uint8 `json:"Version,omitempty"`
 }
 
 // Bloom is a bloom filter backed by a power-of-two sized bitset.
@@ -122,7 +124,8 @@ type Bloom struct {
 	setLocs uint64
 	shift   uint64
 
-	content uint64
+	content     uint64
+	hashVersion uint8 // 0 = legacy, 1 = l|=1 fix (issue #11)
 }
 
 // ElementsAdded returns the number of elements added to the bloom filter.
@@ -252,6 +255,7 @@ func (bl *Bloom) isSet(idx uint64) bool {
 func (bl *Bloom) marshal() bloomJSONImExport {
 	bloomImEx := bloomJSONImExport{}
 	bloomImEx.SetLocs = uint64(bl.setLocs)
+	bloomImEx.Version = bl.hashVersion
 	bloomImEx.FilterSet = make([]byte, len(bl.bitset)<<3)
 	for i, w := range bl.bitset {
 		binary.BigEndian.PutUint64(bloomImEx.FilterSet[i<<3:], w)
@@ -291,6 +295,7 @@ func JSONUnmarshal(dbData []byte) (*Bloom, error) {
 		return nil, err
 	}
 	bf := NewWithBoolset(bloomImEx.FilterSet, bloomImEx.SetLocs)
+	bf.hashVersion = bloomImEx.Version
 	return bf, nil
 }
 
