@@ -1,9 +1,7 @@
 package bbloom
 
 import (
-	"bufio"
 	"fmt"
-	"log"
 	"math"
 	"os"
 	"strconv"
@@ -17,28 +15,14 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	file, err := os.Open("words.txt")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer file.Close()
-	scanner := bufio.NewScanner(file)
 	wordlist1 = make([][]byte, n)
 	for i := range wordlist1 {
-		if scanner.Scan() {
-			wordlist1[i] = []byte(scanner.Text())
-		} else {
-			wordlist1[i] = []byte(string(wordlist1[0]) + strconv.Itoa(i))
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
+		wordlist1[i] = []byte("word-" + strconv.Itoa(i))
 	}
 	fmt.Println("\n###############\nbbloom_test.go")
 	fmt.Print("Benchmarks relate to 2**16 OP. --> output/65536 op/ns\n###############\n\n")
 
 	os.Exit(m.Run())
-
 }
 
 func TestM_NumberOfWrongs(t *testing.T) {
@@ -53,8 +37,11 @@ func TestM_NumberOfWrongs(t *testing.T) {
 			cnt++
 		}
 	}
-	fmt.Printf("Bloomfilter New(7* 2**16, 7) (-> size=%v bit): \n            Check for 'false positives': %v wrong positive 'Has' results on 2**16 entries => %v %%\n", len(bf.bitset)<<6, cnt, math.Round(float64(cnt)/float64(n)*100*100)/100)
-
+	pct := float64(cnt) / float64(n) * 100
+	t.Logf("false positives: %d/%d (%.2f%%)", cnt, n, pct)
+	if pct > 1.0 {
+		t.Errorf("false positive rate too high: %.2f%% (expected <1%%)", pct)
+	}
 }
 
 func TestM_JSON(t *testing.T) {
