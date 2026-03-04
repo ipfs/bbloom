@@ -220,6 +220,9 @@ func (bl *Bloom) sipHash(p []byte) (l, h uint64) {
 	hash := v0 ^ v1 ^ v2 ^ v3
 	h = hash >> bl.shift
 	l = hash << bl.shift >> bl.shift
+	if bl.hashVersion >= 1 {
+		l |= 1 // force odd so l is coprime to 2^sizeExp (issue #11)
+	}
 	return l, h
 
 }
