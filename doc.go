@@ -9,6 +9,10 @@
 // bitset up to the next power of two for fast masking, and provides both
 // non-thread-safe and mutex-protected (TS-suffixed) variants of all operations.
 //
+// By default ([New]) the filter uses publicly known SipHash keys. When the
+// filter will hold data controlled by untrusted parties, use [NewWithKeys]
+// with random secret keys to prevent hash-flooding attacks.
+//
 // Filters can be serialized to JSON with [Bloom.JSONMarshal] and restored
 // with [JSONUnmarshal].
 package bbloom
