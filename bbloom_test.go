@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -81,6 +82,7 @@ func TestM_JSON(t *testing.T) {
 		t.Errorf("FAILED !AddIfNotHas = %v; want %v", cnt2, shallBe)
 	}
 }
+
 func TestSipHashLowAlwaysOdd(t *testing.T) {
 	bf, err := New(float64(1<<20), float64(7))
 	if err != nil {
@@ -92,6 +94,38 @@ func TestSipHashLowAlwaysOdd(t *testing.T) {
 		l, _ := bf.sipHash(entry)
 		if l%2 == 0 {
 			t.Fatalf("l is even for entry %q: l=%d", entry, l)
+		}
+	}
+}
+
+func TestNewWithKeys(t *testing.T) {
+	k0 := uint64(0x0123456789abcdef)
+	k1 := uint64(0xfedcba9876543210)
+
+	bf1, err := NewWithKeys(k0, k1, float64(n*10), float64(7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bf2, err := New(float64(n*10), float64(7))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// same entry should hash to different positions with different keys
+	entry := []byte("test-entry")
+	l1, h1 := bf1.sipHash(entry)
+	l2, h2 := bf2.sipHash(entry)
+	if l1 == l2 && h1 == h2 {
+		t.Fatal("custom keys produced same hash as default keys")
+	}
+
+	// filter should still work correctly with custom keys
+	for i := range wordlist1 {
+		bf1.Add(wordlist1[i])
+	}
+	for i := range wordlist1 {
+		if !bf1.Has(wordlist1[i]) {
+			t.Fatalf("Has(%q) = false after Add", wordlist1[i])
 		}
 	}
 }
@@ -129,6 +163,39 @@ func TestJSONBackwardCompatV0(t *testing.T) {
 	}
 }
 
+func TestNewWithKeysJSON(t *testing.T) {
+	k0 := uint64(0x0123456789abcdef)
+	k1 := uint64(0xfedcba9876543210)
+
+	bf, err := NewWithKeys(k0, k1, float64(n*10), float64(7))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	entries := wordlist1[:1000]
+	for _, e := range entries {
+		bf.Add(e)
+	}
+
+	data := bf.JSONMarshal()
+
+	bf2, err := JSONUnmarshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// keys should be preserved
+	if bf2.k0 != k0 || bf2.k1 != k1 {
+		t.Fatalf("keys not preserved: got k0=%x k1=%x, want k0=%x k1=%x", bf2.k0, bf2.k1, k0, k1)
+	}
+
+	for _, e := range entries {
+		if !bf2.Has(e) {
+			t.Fatalf("custom-key filter lost entry %q after JSON round-trip", e)
+		}
+	}
+}
+
 func TestJSONRoundTripV1(t *testing.T) {
 	bf, err := New(float64(n*10), float64(7))
 	if err != nil {
@@ -156,6 +223,110 @@ func TestJSONRoundTripV1(t *testing.T) {
 			t.Fatalf("v1 filter lost entry %q after JSON round-trip", e)
 		}
 	}
+}
+
+func TestJSONUnmarshalPartialKeys(t *testing.T) {
+	// Only K0 present, K1 absent -- should error, not silently fall back.
+	jsonK0Only := []byte(`{"FilterSet":"AAAAAAAAAA==","SetLocs":3,"K0":42}`)
+	if _, err := JSONUnmarshal(jsonK0Only); err == nil {
+		t.Fatal("expected error for JSON with K0 but no K1")
+	}
+
+	// Only K1 present, K0 absent.
+	jsonK1Only := []byte(`{"FilterSet":"AAAAAAAAAA==","SetLocs":3,"K1":99}`)
+	if _, err := JSONUnmarshal(jsonK1Only); err == nil {
+		t.Fatal("expected error for JSON with K1 but no K0")
+	}
+}
+
+func TestDefaultKeysOmittedFromJSON(t *testing.T) {
+	bf, err := New(float64(512), float64(3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bf.Add([]byte("test"))
+
+	data := bf.JSONMarshal()
+	s := string(data)
+	if strings.Contains(s, "K0") || strings.Contains(s, "K1") {
+		t.Fatalf("default keys should not appear in JSON: %s", s)
+	}
+
+	// custom keys should appear
+	bf2, err := NewWithKeys(42, 99, float64(512), float64(3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bf2.Add([]byte("test"))
+
+	data2 := bf2.JSONMarshal()
+	s2 := string(data2)
+	if !strings.Contains(s2, "K0") || !strings.Contains(s2, "K1") {
+		t.Fatalf("custom keys should appear in JSON: %s", s2)
+	}
+}
+
+func TestNewWithBoolsetAndKeys(t *testing.T) {
+	k0 := uint64(0x0123456789abcdef)
+	k1 := uint64(0xfedcba9876543210)
+	entries := wordlist1[:1000]
+
+	// Build a reference filter with custom keys and populate it.
+	ref, err := NewWithKeys(k0, k1, float64(n*10), float64(7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		ref.Add(e)
+	}
+
+	// Export the raw bitset so we can reconstruct with NewWithBoolsetAndKeys.
+	rawBitset := ref.JSONMarshal()
+	refImport, err := JSONUnmarshal(rawBitset)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("keys are stored", func(t *testing.T) {
+		// NewWithBoolsetAndKeys must propagate k0/k1 into the Bloom struct,
+		// otherwise all lookups will use the wrong hash positions.
+		got := NewWithBoolsetAndKeys(make([]byte, 64), 7, k0, k1)
+		if got.k0 != k0 || got.k1 != k1 {
+			t.Fatalf("keys not set: got k0=%x k1=%x, want k0=%x k1=%x",
+				got.k0, got.k1, k0, k1)
+		}
+	})
+
+	t.Run("entries survive bitset round-trip", func(t *testing.T) {
+		// A filter rebuilt from the same bitset and keys must recognize
+		// every entry that was added to the original.
+		for _, e := range entries {
+			if !refImport.Has(e) {
+				t.Fatalf("entry %q lost after round-trip", e)
+			}
+		}
+	})
+
+	t.Run("wrong keys miss entries", func(t *testing.T) {
+		// Unmarshal the custom-key filter, then force default keys.
+		// Lookups must fail, proving the keys actually affect hashing.
+		wrong, err := JSONUnmarshal(ref.JSONMarshal())
+		if err != nil {
+			t.Fatal(err)
+		}
+		wrong.k0 = defaultK0
+		wrong.k1 = defaultK1
+
+		misses := 0
+		for _, e := range entries {
+			if !wrong.Has(e) {
+				misses++
+			}
+		}
+		if misses == 0 {
+			t.Fatal("default keys matched every entry; custom keys had no effect")
+		}
+	})
 }
 
 func TestFillRatio(t *testing.T) {

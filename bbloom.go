@@ -56,7 +56,8 @@ var (
 	ErrInvalidParms = errors.New("one of the parameters was outside of allowed range")
 )
 
-// New creates a bloom filter. It accepts exactly two float64 arguments:
+// New creates a bloom filter with default SipHash keys. It accepts exactly
+// two float64 arguments:
 //
 //   - If the second parameter is < 1 it is treated as a false-positive rate,
 //     and the filter is sized automatically.
@@ -65,6 +66,10 @@ var (
 //   - If the second parameter is >= 1 it is treated as the number of hash
 //     locations, and the first parameter is the bitset size.
 //     Example: New(650000.0, 7.0) -- 650000-bit filter, 7 hash locations.
+//
+// The default SipHash keys are publicly known constants. If the filter will
+// hold data controlled by untrusted parties, use [NewWithKeys] instead to
+// prevent hash-flooding attacks.
 func New(params ...float64) (bloomfilter *Bloom, err error) {
 	var entries, locs uint64
 	if len(params) == 2 {
@@ -86,9 +91,38 @@ func New(params ...float64) (bloomfilter *Bloom, err error) {
 		setLocs:     locs,
 		shift:       64 - exponent,
 		bitset:      make([]uint64, size>>6),
+		k0:          defaultK0,
+		k1:          defaultK1,
 		hashVersion: 1,
 	}
 	return bloomfilter, nil
+}
+
+// NewWithKeys creates a bloom filter with caller-provided SipHash keys.
+//
+// The default keys used by [New] are publicly known constants baked into the
+// source code. An attacker who knows the keys can craft inputs that all hash
+// to the same bit positions, filling the filter faster than normal and raising
+// the false-positive rate. This is a concern when the filter holds data
+// chosen by untrusted parties (e.g. content-addressed blocks fetched from
+// the network).
+//
+// Providing random, secret keys (e.g. generated once per node from
+// crypto/rand) restores SipHash's anti-collision guarantees and makes such
+// attacks infeasible.
+//
+// The params are interpreted the same way as in [New]. Custom keys are
+// preserved across [Bloom.JSONMarshal] / [JSONUnmarshal] round-trips.
+// Note: custom keys are included in plaintext in the [Bloom.JSONMarshal]
+// output, so treat serialized filters accordingly.
+func NewWithKeys(k0, k1 uint64, params ...float64) (*Bloom, error) {
+	bf, err := New(params...)
+	if err != nil {
+		return nil, err
+	}
+	bf.k0 = k0
+	bf.k1 = k1
+	return bf, nil
 }
 
 // NewWithBoolset creates a bloom filter from a pre-existing bitset.
@@ -105,12 +139,24 @@ func NewWithBoolset(bs []byte, locs uint64) (bloomfilter *Bloom) {
 	return bloomfilter
 }
 
+// NewWithBoolsetAndKeys creates a bloom filter from a pre-existing bitset
+// with caller-provided SipHash keys. See [NewWithKeys] for why custom keys
+// matter and [NewWithBoolset] for how the bitset is interpreted.
+func NewWithBoolsetAndKeys(bs []byte, locs, k0, k1 uint64) (bloomfilter *Bloom) {
+	bloomfilter = NewWithBoolset(bs, locs)
+	bloomfilter.k0 = k0
+	bloomfilter.k1 = k1
+	return bloomfilter
+}
+
 // bloomJSONImExport
 // Im/Export structure used by JSONMarshal / JSONUnmarshal
 type bloomJSONImExport struct {
 	FilterSet []byte
 	SetLocs   uint64
-	Version   uint8 `json:"Version,omitempty"`
+	Version   uint8   `json:"Version,omitempty"`
+	K0        *uint64 `json:"K0,omitempty"`
+	K1        *uint64 `json:"K1,omitempty"`
 }
 
 // Bloom is a bloom filter backed by a power-of-two sized bitset.
@@ -125,7 +171,8 @@ type Bloom struct {
 	shift   uint64
 
 	content     uint64
-	hashVersion uint8 // 0 = legacy, 1 = l|=1 fix (issue #11)
+	k0, k1      uint64 // SipHash keys
+	hashVersion uint8  // 0 = legacy, 1 = l|=1 fix (issue #11)
 }
 
 // ElementsAdded returns the number of elements added to the bloom filter.
@@ -256,6 +303,11 @@ func (bl *Bloom) marshal() bloomJSONImExport {
 	bloomImEx := bloomJSONImExport{}
 	bloomImEx.SetLocs = uint64(bl.setLocs)
 	bloomImEx.Version = bl.hashVersion
+	if bl.k0 != defaultK0 || bl.k1 != defaultK1 {
+		k0, k1 := bl.k0, bl.k1
+		bloomImEx.K0 = &k0
+		bloomImEx.K1 = &k1
+	}
 	bloomImEx.FilterSet = make([]byte, len(bl.bitset)<<3)
 	for i, w := range bl.bitset {
 		binary.BigEndian.PutUint64(bloomImEx.FilterSet[i<<3:], w)
@@ -294,7 +346,15 @@ func JSONUnmarshal(dbData []byte) (*Bloom, error) {
 	if err != nil {
 		return nil, err
 	}
-	bf := NewWithBoolset(bloomImEx.FilterSet, bloomImEx.SetLocs)
+	if (bloomImEx.K0 == nil) != (bloomImEx.K1 == nil) {
+		return nil, errors.New("both K0 and K1 must be present or both absent")
+	}
+	var bf *Bloom
+	if bloomImEx.K0 != nil && bloomImEx.K1 != nil {
+		bf = NewWithBoolsetAndKeys(bloomImEx.FilterSet, bloomImEx.SetLocs, *bloomImEx.K0, *bloomImEx.K1)
+	} else {
+		bf = NewWithBoolset(bloomImEx.FilterSet, bloomImEx.SetLocs)
+	}
 	bf.hashVersion = bloomImEx.Version
 	return bf, nil
 }
