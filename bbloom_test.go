@@ -225,6 +225,20 @@ func TestJSONRoundTripV1(t *testing.T) {
 	}
 }
 
+func TestJSONUnmarshalPartialKeys(t *testing.T) {
+	// Only K0 present, K1 absent -- should error, not silently fall back.
+	jsonK0Only := []byte(`{"FilterSet":"AAAAAAAAAA==","SetLocs":3,"K0":42}`)
+	if _, err := JSONUnmarshal(jsonK0Only); err == nil {
+		t.Fatal("expected error for JSON with K0 but no K1")
+	}
+
+	// Only K1 present, K0 absent.
+	jsonK1Only := []byte(`{"FilterSet":"AAAAAAAAAA==","SetLocs":3,"K1":99}`)
+	if _, err := JSONUnmarshal(jsonK1Only); err == nil {
+		t.Fatal("expected error for JSON with K1 but no K0")
+	}
+}
+
 func TestDefaultKeysOmittedFromJSON(t *testing.T) {
 	bf, err := New(float64(512), float64(3))
 	if err != nil {

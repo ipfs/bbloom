@@ -344,6 +344,9 @@ func JSONUnmarshal(dbData []byte) (*Bloom, error) {
 	if err != nil {
 		return nil, err
 	}
+	if (bloomImEx.K0 == nil) != (bloomImEx.K1 == nil) {
+		return nil, errors.New("both K0 and K1 must be present or both absent")
+	}
 	var bf *Bloom
 	if bloomImEx.K0 != nil && bloomImEx.K1 != nil {
 		bf = NewWithBoolsetAndKeys(bloomImEx.FilterSet, bloomImEx.SetLocs, *bloomImEx.K0, *bloomImEx.K1)
