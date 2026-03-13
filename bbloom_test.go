@@ -81,6 +81,83 @@ func TestM_JSON(t *testing.T) {
 		t.Errorf("FAILED !AddIfNotHas = %v; want %v", cnt2, shallBe)
 	}
 }
+func TestSipHashLowAlwaysOdd(t *testing.T) {
+	bf, err := New(float64(1<<20), float64(7))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i := range 10000 {
+		entry := []byte("entry-" + strconv.Itoa(i))
+		l, _ := bf.sipHash(entry)
+		if l%2 == 0 {
+			t.Fatalf("l is even for entry %q: l=%d", entry, l)
+		}
+	}
+}
+
+func TestJSONBackwardCompatV0(t *testing.T) {
+	// simulate a filter created with the legacy hash (version 0)
+	bf, err := New(float64(n*10), float64(7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bf.hashVersion = 0 // legacy
+
+	entries := wordlist1[:1000]
+	for _, e := range entries {
+		bf.Add(e)
+	}
+
+	// serialize (will have Version:0 which is omitted from JSON)
+	data := bf.JSONMarshal()
+
+	// deserialize -- should restore version 0 and use legacy hash
+	bf2, err := JSONUnmarshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if bf2.hashVersion != 0 {
+		t.Fatalf("expected hashVersion 0, got %d", bf2.hashVersion)
+	}
+
+	for _, e := range entries {
+		if !bf2.Has(e) {
+			t.Fatalf("v0 filter lost entry %q after JSON round-trip", e)
+		}
+	}
+}
+
+func TestJSONRoundTripV1(t *testing.T) {
+	bf, err := New(float64(n*10), float64(7))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	entries := wordlist1[:1000]
+	for _, e := range entries {
+		bf.Add(e)
+	}
+
+	data := bf.JSONMarshal()
+
+	bf2, err := JSONUnmarshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if bf2.hashVersion != 1 {
+		t.Fatalf("expected hashVersion 1, got %d", bf2.hashVersion)
+	}
+
+	for _, e := range entries {
+		if !bf2.Has(e) {
+			t.Fatalf("v1 filter lost entry %q after JSON round-trip", e)
+		}
+	}
+}
+
 func TestFillRatio(t *testing.T) {
 	bf, err := New(float64(512), float64(7))
 	if err != nil {
