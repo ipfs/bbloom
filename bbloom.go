@@ -137,6 +137,16 @@ func NewWithBoolset(bs []byte, locs uint64) (bloomfilter *Bloom) {
 	return bloomfilter
 }
 
+// NewWithBoolsetAndKeys creates a bloom filter from a pre-existing bitset
+// with caller-provided SipHash keys. See [NewWithKeys] for why custom keys
+// matter and [NewWithBoolset] for how the bitset is interpreted.
+func NewWithBoolsetAndKeys(bs []byte, locs, k0, k1 uint64) (bloomfilter *Bloom) {
+	bloomfilter = NewWithBoolset(bs, locs)
+	bloomfilter.k0 = k0
+	bloomfilter.k1 = k1
+	return bloomfilter
+}
+
 // bloomJSONImExport
 // Im/Export structure used by JSONMarshal / JSONUnmarshal
 type bloomJSONImExport struct {
@@ -334,14 +344,13 @@ func JSONUnmarshal(dbData []byte) (*Bloom, error) {
 	if err != nil {
 		return nil, err
 	}
-	bf := NewWithBoolset(bloomImEx.FilterSet, bloomImEx.SetLocs)
+	var bf *Bloom
+	if bloomImEx.K0 != nil && bloomImEx.K1 != nil {
+		bf = NewWithBoolsetAndKeys(bloomImEx.FilterSet, bloomImEx.SetLocs, *bloomImEx.K0, *bloomImEx.K1)
+	} else {
+		bf = NewWithBoolset(bloomImEx.FilterSet, bloomImEx.SetLocs)
+	}
 	bf.hashVersion = bloomImEx.Version
-	if bloomImEx.K0 != nil {
-		bf.k0 = *bloomImEx.K0
-	}
-	if bloomImEx.K1 != nil {
-		bf.k1 = *bloomImEx.K1
-	}
 	return bf, nil
 }
 
