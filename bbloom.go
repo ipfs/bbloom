@@ -292,8 +292,9 @@ func (bl *Bloom) marshal() bloomJSONImExport {
 	bloomImEx.SetLocs = uint64(bl.setLocs)
 	bloomImEx.Version = bl.hashVersion
 	if bl.k0 != defaultK0 || bl.k1 != defaultK1 {
-		bloomImEx.K0 = &bl.k0
-		bloomImEx.K1 = &bl.k1
+		k0, k1 := bl.k0, bl.k1
+		bloomImEx.K0 = &k0
+		bloomImEx.K1 = &k1
 	}
 	bloomImEx.FilterSet = make([]byte, len(bl.bitset)<<3)
 	for i, w := range bl.bitset {
