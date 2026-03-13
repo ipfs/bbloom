@@ -113,6 +113,8 @@ func New(params ...float64) (bloomfilter *Bloom, err error) {
 //
 // The params are interpreted the same way as in [New]. Custom keys are
 // preserved across [Bloom.JSONMarshal] / [JSONUnmarshal] round-trips.
+// Note: custom keys are included in plaintext in the [Bloom.JSONMarshal]
+// output, so treat serialized filters accordingly.
 func NewWithKeys(k0, k1 uint64, params ...float64) (*Bloom, error) {
 	bf, err := New(params...)
 	if err != nil {
