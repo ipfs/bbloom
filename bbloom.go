@@ -86,13 +86,14 @@ func New(params ...float64) (bloomfilter *Bloom, err error) {
 	}
 	size, exponent := getSize(uint64(entries))
 	bloomfilter = &Bloom{
-		sizeExp: exponent,
-		size:    size - 1,
-		setLocs: locs,
-		shift:   64 - exponent,
-		bitset:  make([]uint64, size>>6),
-		k0:      defaultK0,
-		k1:      defaultK1,
+		sizeExp:     exponent,
+		size:        size - 1,
+		setLocs:     locs,
+		shift:       64 - exponent,
+		bitset:      make([]uint64, size>>6),
+		k0:          defaultK0,
+		k1:          defaultK1,
+		hashVersion: 1,
 	}
 	return bloomfilter, nil
 }
@@ -141,6 +142,7 @@ func NewWithBoolset(bs []byte, locs uint64) (bloomfilter *Bloom) {
 type bloomJSONImExport struct {
 	FilterSet []byte
 	SetLocs   uint64
+	Version   uint8   `json:"Version,omitempty"`
 	K0        *uint64 `json:"K0,omitempty"`
 	K1        *uint64 `json:"K1,omitempty"`
 }
@@ -156,8 +158,9 @@ type Bloom struct {
 	setLocs uint64
 	shift   uint64
 
-	content uint64
-	k0, k1  uint64 // SipHash keys
+	content     uint64
+	k0, k1      uint64 // SipHash keys
+	hashVersion uint8  // 0 = legacy, 1 = l|=1 fix (issue #11)
 }
 
 // ElementsAdded returns the number of elements added to the bloom filter.
@@ -287,6 +290,7 @@ func (bl *Bloom) isSet(idx uint64) bool {
 func (bl *Bloom) marshal() bloomJSONImExport {
 	bloomImEx := bloomJSONImExport{}
 	bloomImEx.SetLocs = uint64(bl.setLocs)
+	bloomImEx.Version = bl.hashVersion
 	if bl.k0 != defaultK0 || bl.k1 != defaultK1 {
 		bloomImEx.K0 = &bl.k0
 		bloomImEx.K1 = &bl.k1
@@ -330,6 +334,7 @@ func JSONUnmarshal(dbData []byte) (*Bloom, error) {
 		return nil, err
 	}
 	bf := NewWithBoolset(bloomImEx.FilterSet, bloomImEx.SetLocs)
+	bf.hashVersion = bloomImEx.Version
 	if bloomImEx.K0 != nil {
 		bf.k0 = *bloomImEx.K0
 	}
