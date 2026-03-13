@@ -1,6 +1,7 @@
 package bbloom
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -95,6 +96,67 @@ func TestSipHashLowAlwaysOdd(t *testing.T) {
 		if l%2 == 0 {
 			t.Fatalf("l is even for entry %q: l=%d", entry, l)
 		}
+	}
+}
+
+func TestJSON_ElementsRoundTrip(t *testing.T) {
+	bf, err := New(float64(n*10), float64(7))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i := range wordlist1 {
+		bf.Add(wordlist1[i])
+	}
+
+	if bf.ElementsAdded() != uint64(n) {
+		t.Fatalf("ElementsAdded = %d, want %d", bf.ElementsAdded(), n)
+	}
+
+	data := bf.JSONMarshal()
+
+	bf2, err := JSONUnmarshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if bf2.ElementsAdded() != uint64(n) {
+		t.Fatalf("ElementsAdded after round-trip = %d, want %d", bf2.ElementsAdded(), n)
+	}
+}
+
+func TestJSON_ElementsBackwardCompat(t *testing.T) {
+	// simulate old-format JSON by marshaling a filter and stripping Elements
+	bf, err := New(float64(512), float64(3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bf.Add([]byte("hello"))
+	bf.Add([]byte("world"))
+
+	// marshal, strip Elements field, unmarshal
+	data := bf.JSONMarshal()
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatal(err)
+	}
+	delete(m, "Elements")
+	oldJSON, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bf2, err := JSONUnmarshal(oldJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// old format has no Elements field, so ElementsAdded should be 0
+	if bf2.ElementsAdded() != 0 {
+		t.Fatalf("ElementsAdded from old JSON = %d, want 0", bf2.ElementsAdded())
+	}
+	// but the bitset should still work
+	if !bf2.Has([]byte("hello")) || !bf2.Has([]byte("world")) {
+		t.Fatal("filter lost entries after old-format round-trip")
 	}
 }
 

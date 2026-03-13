@@ -154,6 +154,7 @@ func NewWithBoolsetAndKeys(bs []byte, locs, k0, k1 uint64) (bloomfilter *Bloom) 
 type bloomJSONImExport struct {
 	FilterSet []byte
 	SetLocs   uint64
+	Elements  *uint64 `json:"Elements,omitempty"`
 	Version   uint8   `json:"Version,omitempty"`
 	K0        *uint64 `json:"K0,omitempty"`
 	K1        *uint64 `json:"K1,omitempty"`
@@ -175,7 +176,11 @@ type Bloom struct {
 	hashVersion uint8  // 0 = legacy, 1 = l|=1 fix (issue #11)
 }
 
-// ElementsAdded returns the number of elements added to the bloom filter.
+// ElementsAdded returns the element counter. The counter is incremented by
+// [Bloom.Add] on every call (including duplicates) and by [Bloom.AddIfNotHas]
+// only when the entry is new. Use [Bloom.AddIfNotHas] when an accurate count
+// of distinct elements is needed (e.g. for sizing a replacement filter).
+// The counter is preserved across [Bloom.JSONMarshal] / [JSONUnmarshal].
 func (bl *Bloom) ElementsAdded() uint64 {
 	return bl.content
 }
@@ -302,6 +307,8 @@ func (bl *Bloom) isSet(idx uint64) bool {
 func (bl *Bloom) marshal() bloomJSONImExport {
 	bloomImEx := bloomJSONImExport{}
 	bloomImEx.SetLocs = uint64(bl.setLocs)
+	elements := bl.content
+	bloomImEx.Elements = &elements
 	bloomImEx.Version = bl.hashVersion
 	if bl.k0 != defaultK0 || bl.k1 != defaultK1 {
 		k0, k1 := bl.k0, bl.k1
@@ -356,6 +363,9 @@ func JSONUnmarshal(dbData []byte) (*Bloom, error) {
 		bf = NewWithBoolset(bloomImEx.FilterSet, bloomImEx.SetLocs)
 	}
 	bf.hashVersion = bloomImEx.Version
+	if bloomImEx.Elements != nil {
+		bf.content = *bloomImEx.Elements
+	}
 	return bf, nil
 }
 
