@@ -86,13 +86,14 @@ func New(params ...float64) (bloomfilter *Bloom, err error) {
 	}
 	size, exponent := getSize(uint64(entries))
 	bloomfilter = &Bloom{
-		sizeExp: exponent,
-		size:    size - 1,
-		setLocs: locs,
-		shift:   64 - exponent,
-		bitset:  make([]uint64, size>>6),
-		k0:      defaultK0,
-		k1:      defaultK1,
+		sizeExp:     exponent,
+		size:        size - 1,
+		setLocs:     locs,
+		shift:       64 - exponent,
+		bitset:      make([]uint64, size>>6),
+		k0:          defaultK0,
+		k1:          defaultK1,
+		hashVersion: 1,
 	}
 	return bloomfilter, nil
 }
@@ -112,6 +113,8 @@ func New(params ...float64) (bloomfilter *Bloom, err error) {
 //
 // The params are interpreted the same way as in [New]. Custom keys are
 // preserved across [Bloom.JSONMarshal] / [JSONUnmarshal] round-trips.
+// Note: custom keys are included in plaintext in the [Bloom.JSONMarshal]
+// output, so treat serialized filters accordingly.
 func NewWithKeys(k0, k1 uint64, params ...float64) (*Bloom, error) {
 	bf, err := New(params...)
 	if err != nil {
@@ -136,12 +139,23 @@ func NewWithBoolset(bs []byte, locs uint64) (bloomfilter *Bloom) {
 	return bloomfilter
 }
 
+// NewWithBoolsetAndKeys creates a bloom filter from a pre-existing bitset
+// with caller-provided SipHash keys. See [NewWithKeys] for why custom keys
+// matter and [NewWithBoolset] for how the bitset is interpreted.
+func NewWithBoolsetAndKeys(bs []byte, locs, k0, k1 uint64) (bloomfilter *Bloom) {
+	bloomfilter = NewWithBoolset(bs, locs)
+	bloomfilter.k0 = k0
+	bloomfilter.k1 = k1
+	return bloomfilter
+}
+
 // bloomJSONImExport
 // Im/Export structure used by JSONMarshal / JSONUnmarshal
 type bloomJSONImExport struct {
 	FilterSet []byte
 	SetLocs   uint64
 	Elements  *uint64 `json:"Elements,omitempty"`
+	Version   uint8   `json:"Version,omitempty"`
 	K0        *uint64 `json:"K0,omitempty"`
 	K1        *uint64 `json:"K1,omitempty"`
 }
@@ -157,8 +171,9 @@ type Bloom struct {
 	setLocs uint64
 	shift   uint64
 
-	content uint64
-	k0, k1  uint64 // SipHash keys
+	content     uint64
+	k0, k1      uint64 // SipHash keys
+	hashVersion uint8  // 0 = legacy, 1 = l|=1 fix (issue #11)
 }
 
 // ElementsAdded returns the element counter. The counter is incremented by
@@ -292,10 +307,13 @@ func (bl *Bloom) isSet(idx uint64) bool {
 func (bl *Bloom) marshal() bloomJSONImExport {
 	bloomImEx := bloomJSONImExport{}
 	bloomImEx.SetLocs = uint64(bl.setLocs)
-	bloomImEx.Elements = &bl.content
+	elements := bl.content
+	bloomImEx.Elements = &elements
+	bloomImEx.Version = bl.hashVersion
 	if bl.k0 != defaultK0 || bl.k1 != defaultK1 {
-		bloomImEx.K0 = &bl.k0
-		bloomImEx.K1 = &bl.k1
+		k0, k1 := bl.k0, bl.k1
+		bloomImEx.K0 = &k0
+		bloomImEx.K1 = &k1
 	}
 	bloomImEx.FilterSet = make([]byte, len(bl.bitset)<<3)
 	for i, w := range bl.bitset {
@@ -335,15 +353,18 @@ func JSONUnmarshal(dbData []byte) (*Bloom, error) {
 	if err != nil {
 		return nil, err
 	}
-	bf := NewWithBoolset(bloomImEx.FilterSet, bloomImEx.SetLocs)
+	if (bloomImEx.K0 == nil) != (bloomImEx.K1 == nil) {
+		return nil, errors.New("both K0 and K1 must be present or both absent")
+	}
+	var bf *Bloom
+	if bloomImEx.K0 != nil && bloomImEx.K1 != nil {
+		bf = NewWithBoolsetAndKeys(bloomImEx.FilterSet, bloomImEx.SetLocs, *bloomImEx.K0, *bloomImEx.K1)
+	} else {
+		bf = NewWithBoolset(bloomImEx.FilterSet, bloomImEx.SetLocs)
+	}
+	bf.hashVersion = bloomImEx.Version
 	if bloomImEx.Elements != nil {
 		bf.content = *bloomImEx.Elements
-	}
-	if bloomImEx.K0 != nil {
-		bf.k0 = *bloomImEx.K0
-	}
-	if bloomImEx.K1 != nil {
-		bf.k1 = *bloomImEx.K1
 	}
 	return bf, nil
 }
