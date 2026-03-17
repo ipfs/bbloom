@@ -28,7 +28,8 @@
 // hash functions with no increase in the asymptotic false positive rate.
 //
 // The pre-hashed path is roughly 4x faster per operation than the SipHash
-// path. A filter must use one path consistently for all entries: do not mix
-// [Bloom.Add] and [Bloom.AddHashed] on the same filter, as they compute
-// different bit positions for the same logical key.
+// path. A filter must use one path consistently for all entries. Mixing
+// [Bloom.Add] and [Bloom.AddHashed] on the same filter panics at runtime,
+// since they compute different bit positions for the same logical key.
+// The chosen mode is preserved across JSON serialization.
 package bbloom

@@ -3,6 +3,7 @@ package bbloom
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/json"
 	"testing"
 )
 
@@ -169,4 +170,131 @@ func TestHashedWithCustomKeys(t *testing.T) {
 	if !bf1.HasHashed(h1, h2) || !bf2.HasHashed(h1, h2) {
 		t.Error("HasHashed should work regardless of SipHash keys")
 	}
+}
+
+// --- Hash mode enforcement tests ---
+
+func mustPanic(t *testing.T, name string, fn func()) {
+	t.Helper()
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("%s: expected panic, got none", name)
+		}
+	}()
+	fn()
+}
+
+func TestMixingAddThenAddHashedPanics(t *testing.T) {
+	bf, _ := New(float64(1<<16), 0.01)
+	bf.Add([]byte("x"))
+	mustPanic(t, "AddHashed after Add", func() {
+		bf.AddHashed(1, 2)
+	})
+}
+
+func TestMixingAddHashedThenAddPanics(t *testing.T) {
+	bf, _ := New(float64(1<<16), 0.01)
+	bf.AddHashed(1, 2)
+	mustPanic(t, "Add after AddHashed", func() {
+		bf.Add([]byte("x"))
+	})
+}
+
+func TestMixingHasThenHasHashedPanics(t *testing.T) {
+	bf, _ := New(float64(1<<16), 0.01)
+	bf.Has([]byte("x")) // sets mode to SipHash
+	mustPanic(t, "HasHashed after Has", func() {
+		bf.HasHashed(1, 2)
+	})
+}
+
+func TestMixingHasHashedThenHasPanics(t *testing.T) {
+	bf, _ := New(float64(1<<16), 0.01)
+	bf.HasHashed(1, 2) // sets mode to hashed
+	mustPanic(t, "Has after HasHashed", func() {
+		bf.Has([]byte("x"))
+	})
+}
+
+func TestClearResetsHashMode(t *testing.T) {
+	bf, _ := New(float64(1<<16), 0.01)
+	bf.Add([]byte("x"))
+	bf.Clear()
+	// After Clear, the filter is empty and either path should work.
+	bf.AddHashed(1, 2) // must not panic
+	if !bf.HasHashed(1, 2) {
+		t.Error("HasHashed should find item after Clear + AddHashed")
+	}
+}
+
+func TestHashModeJSONRoundTrip(t *testing.T) {
+	t.Run("SipHash", func(t *testing.T) {
+		bf, _ := New(float64(1<<16), 0.01)
+		bf.Add([]byte("x"))
+		data := bf.JSONMarshal()
+
+		bf2, err := JSONUnmarshal(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Must work with SipHash path.
+		if !bf2.Has([]byte("x")) {
+			t.Error("entry lost after round-trip")
+		}
+		// Must reject hashed path.
+		mustPanic(t, "HasHashed on SipHash filter", func() {
+			bf2.HasHashed(1, 2)
+		})
+	})
+
+	t.Run("Hashed", func(t *testing.T) {
+		bf, _ := New(float64(1<<16), 0.01)
+		d := sha256Digest(42)
+		h1, h2 := SplitDigest(d)
+		bf.AddHashed(h1, h2)
+		data := bf.JSONMarshal()
+
+		bf2, err := JSONUnmarshal(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bf2.HasHashed(h1, h2) {
+			t.Error("entry lost after round-trip")
+		}
+		mustPanic(t, "Has on Hashed filter", func() {
+			bf2.Has([]byte("x"))
+		})
+	})
+}
+
+func TestHashModeLegacyJSONDefaultsToSipHash(t *testing.T) {
+	// Simulate legacy JSON that has no HashMode field but is non-empty.
+	bf, _ := New(float64(1<<16), 0.01)
+	bf.Add([]byte("legacy"))
+	data := bf.JSONMarshal()
+
+	// Strip HashMode from JSON to simulate pre-hashMode serialization.
+	// Since HashMode is omitempty and modeSipHash=1, it will be present.
+	// We need to manually remove it.
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	delete(raw, "HashMode")
+	data2, err := json.Marshal(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bf2, err := JSONUnmarshal(data2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Should default to SipHash since content > 0.
+	if !bf2.Has([]byte("legacy")) {
+		t.Error("entry lost")
+	}
+	mustPanic(t, "HasHashed on legacy filter", func() {
+		bf2.HasHashed(1, 2)
+	})
 }

@@ -155,6 +155,7 @@ type bloomJSONImExport struct {
 	FilterSet []byte
 	SetLocs   uint64
 	Version   uint8   `json:"Version,omitempty"`
+	HashMode  uint8   `json:"HashMode,omitempty"`
 	K0        *uint64 `json:"K0,omitempty"`
 	K1        *uint64 `json:"K1,omitempty"`
 }
@@ -173,6 +174,25 @@ type Bloom struct {
 	content     uint64
 	k0, k1      uint64 // SipHash keys
 	hashVersion uint8  // 0 = legacy, 1 = l|=1 fix (issue #11)
+	hashMode    uint8  // 0 = unset, 1 = SipHash, 2 = pre-hashed
+}
+
+// Hash mode constants.
+const (
+	modeUnset   uint8 = 0
+	modeSipHash uint8 = 1
+	modeHashed  uint8 = 2
+)
+
+// checkMode sets the hash mode on first use and panics on mismatch.
+func (bl *Bloom) checkMode(want uint8) {
+	if bl.hashMode == modeUnset {
+		bl.hashMode = want
+		return
+	}
+	if bl.hashMode != want {
+		panic("bbloom: cannot mix Add/Has (SipHash) and AddHashed/HasHashed (pre-hashed) on the same filter")
+	}
 }
 
 // ElementsAdded returns the number of elements added to the bloom filter.
@@ -200,6 +220,7 @@ func (bl *Bloom) ElementsAdded() uint64 {
 // Add inserts entry into the bloom filter. Not safe for concurrent use;
 // see [Bloom.AddTS] for a mutex-protected variant.
 func (bl *Bloom) Add(entry []byte) {
+	bl.checkMode(modeSipHash)
 	bl.content++
 	l, h := bl.sipHash(entry)
 	for i := uint64(0); i < (*bl).setLocs; i++ {
@@ -219,6 +240,7 @@ func (bl *Bloom) AddTS(entry []byte) {
 // false positive; a false result is always definitive. Not safe for
 // concurrent use; see [Bloom.HasTS].
 func (bl *Bloom) Has(entry []byte) bool {
+	bl.checkMode(modeSipHash)
 	l, h := bl.sipHash(entry)
 	res := true
 	for i := uint64(0); i < bl.setLocs; i++ {
@@ -246,6 +268,7 @@ func (bl *Bloom) HasTS(entry []byte) bool {
 // It returns true if the entry was added, false if it was already present.
 // Not safe for concurrent use; see [Bloom.AddIfNotHasTS].
 func (bl *Bloom) AddIfNotHas(entry []byte) (added bool) {
+	bl.checkMode(modeSipHash)
 	l, h := bl.sipHash(entry)
 	contained := true
 	for i := uint64(0); i < bl.setLocs; i++ {
@@ -298,6 +321,7 @@ func SplitDigest(digest []byte) (h1, h2 uint64) {
 //
 // Not safe for concurrent use; see [Bloom.AddHashedTS].
 func (bl *Bloom) AddHashed(h1, h2 uint64) {
+	bl.checkMode(modeHashed)
 	bl.content++
 	h2 |= 1
 	for i := uint64(0); i < bl.setLocs; i++ {
@@ -317,6 +341,7 @@ func (bl *Bloom) AddHashedTS(h1, h2 uint64) {
 // [Bloom.AddHashed], not [Bloom.Add]. Not safe for concurrent use;
 // see [Bloom.HasHashedTS].
 func (bl *Bloom) HasHashed(h1, h2 uint64) bool {
+	bl.checkMode(modeHashed)
 	h2 |= 1
 	for i := uint64(0); i < bl.setLocs; i++ {
 		if !bl.isSet((h1 + i*h2) & bl.size) {
@@ -338,6 +363,7 @@ func (bl *Bloom) HasHashedTS(h1, h2 uint64) bool {
 // Only use on a filter populated with [Bloom.AddHashed], not [Bloom.Add].
 // Not safe for concurrent use; see [Bloom.AddIfNotHasHashedTS].
 func (bl *Bloom) AddIfNotHasHashed(h1, h2 uint64) (added bool) {
+	bl.checkMode(modeHashed)
 	h2 |= 1
 	contained := true
 	for i := uint64(0); i < bl.setLocs; i++ {
@@ -366,6 +392,7 @@ func (bl *Bloom) Clear() {
 		bs[i] = 0
 	}
 	bl.content = 0
+	bl.hashMode = modeUnset
 }
 
 // ClearTS is the thread-safe version of [Bloom.Clear].
@@ -394,6 +421,7 @@ func (bl *Bloom) marshal() bloomJSONImExport {
 	bloomImEx := bloomJSONImExport{}
 	bloomImEx.SetLocs = uint64(bl.setLocs)
 	bloomImEx.Version = bl.hashVersion
+	bloomImEx.HashMode = bl.hashMode
 	if bl.k0 != defaultK0 || bl.k1 != defaultK1 {
 		k0, k1 := bl.k0, bl.k1
 		bloomImEx.K0 = &k0
@@ -447,6 +475,12 @@ func JSONUnmarshal(dbData []byte) (*Bloom, error) {
 		bf = NewWithBoolset(bloomImEx.FilterSet, bloomImEx.SetLocs)
 	}
 	bf.hashVersion = bloomImEx.Version
+	bf.hashMode = bloomImEx.HashMode
+	if bf.hashMode == modeUnset && bf.content > 0 {
+		// Legacy JSON from before hashMode was added. All pre-existing
+		// filters used the SipHash path.
+		bf.hashMode = modeSipHash
+	}
 	return bf, nil
 }
 
