@@ -39,10 +39,9 @@ bf.HasTS([]byte("peanutbutter"))  // true
 
 // pre-hashed path: skip SipHash when input is a crypto digest
 // (Kirsch-Mitzenmacher optimization, ~4x faster per op)
-digest := sha256Hash(...)         // any crypto digest >= 16 bytes
-h1, h2 := bbloom.SplitDigest(digest)
-bf.AddHashed(h1, h2)
-bf.HasHashed(h1, h2)             // true
+digest := sha256Hash(...)      // any crypto digest >= 16 bytes
+bf.AddHashed(digest)
+bf.HasHashed(digest)           // true
 
 // JSON serialization
 data := bf.JSONMarshal()

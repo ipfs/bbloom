@@ -30,8 +30,6 @@ func makeSHA256Multihashes(n int) (mhs [][]byte, digests [][]byte) {
 var (
 	benchMHs     [][]byte
 	benchDigests [][]byte
-	benchH1s     []uint64
-	benchH2s     []uint64
 )
 
 const benchN = 2_000_000
@@ -41,11 +39,6 @@ func initBenchData() {
 		return
 	}
 	benchMHs, benchDigests = makeSHA256Multihashes(benchN)
-	benchH1s = make([]uint64, benchN)
-	benchH2s = make([]uint64, benchN)
-	for i, d := range benchDigests {
-		benchH1s[i], benchH2s[i] = SplitDigest(d)
-	}
 }
 
 func newBenchBloom() *Bloom {
@@ -71,10 +64,10 @@ func BenchmarkPerOp_Add_SipHash(b *testing.B) {
 func BenchmarkPerOp_Add_Hashed(b *testing.B) {
 	initBenchData()
 	bf := newBenchBloom()
-	h1, h2 := benchH1s[0], benchH2s[0]
+	d := benchDigests[0]
 	b.ResetTimer()
 	for range b.N {
-		bf.AddHashed(h1, h2)
+		bf.AddHashed(d)
 	}
 }
 
@@ -92,11 +85,11 @@ func BenchmarkPerOp_Has_SipHash(b *testing.B) {
 func BenchmarkPerOp_Has_Hashed(b *testing.B) {
 	initBenchData()
 	bf := newBenchBloom()
-	h1, h2 := benchH1s[0], benchH2s[0]
-	bf.AddHashed(h1, h2)
+	d := benchDigests[0]
+	bf.AddHashed(d)
 	b.ResetTimer()
 	for range b.N {
-		bf.HasHashed(h1, h2)
+		bf.HasHashed(d)
 	}
 }
 
@@ -117,8 +110,7 @@ func BenchmarkBulk2M_Add_Hashed(b *testing.B) {
 	for range b.N {
 		bf := newBenchBloom()
 		for _, d := range benchDigests {
-			h1, h2 := SplitDigest(d)
-			bf.AddHashed(h1, h2)
+			bf.AddHashed(d)
 		}
 	}
 }
@@ -141,14 +133,12 @@ func BenchmarkBulk2M_Has_Hashed(b *testing.B) {
 	initBenchData()
 	bf := newBenchBloom()
 	for _, d := range benchDigests {
-		h1, h2 := SplitDigest(d)
-		bf.AddHashed(h1, h2)
+		bf.AddHashed(d)
 	}
 	b.ResetTimer()
 	for range b.N {
 		for _, d := range benchDigests {
-			h1, h2 := SplitDigest(d)
-			bf.HasHashed(h1, h2)
+			bf.HasHashed(d)
 		}
 	}
 }
@@ -168,8 +158,7 @@ func BenchmarkBulk2M_AddIfNotHas_Hashed(b *testing.B) {
 	for range b.N {
 		bf := newBenchBloom()
 		for _, d := range benchDigests {
-			h1, h2 := SplitDigest(d)
-			bf.AddIfNotHasHashed(h1, h2)
+			bf.AddIfNotHasHashed(d)
 		}
 	}
 }

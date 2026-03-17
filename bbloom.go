@@ -290,39 +290,31 @@ func (bl *Bloom) AddIfNotHasTS(entry []byte) (added bool) {
 	return added
 }
 
-// SplitDigest reads two little-endian uint64 values from a cryptographic
-// digest for use with [Bloom.AddHashed] / [Bloom.HasHashed]. h1 comes from
-// digest[0:8], h2 from digest[8:16]. Panics if len(digest) < 16.
-//
-// Typical usage with a go-cid CID and go-multihash:
-//
-//	dm, _ := multihash.Decode(c.Hash())
-//	h1, h2 := bbloom.SplitDigest(dm.Digest)
-//	bf.AddHashed(h1, h2)
-//
-// Digests from different hash functions (SHA2-256, BLAKE2b-256, etc.) can
-// be mixed freely in the same filter -- each produces uniform, independent
-// bytes. Identity multihashes (code 0x00) and digests shorter than 16
-// bytes cannot use this path; use a separate [Bloom] with [Bloom.Add]
-// for those.
-func SplitDigest(digest []byte) (h1, h2 uint64) {
+// splitDigest reads two little-endian uint64 values from a cryptographic
+// digest. h1 comes from digest[0:8], h2 from digest[8:16].
+func splitDigest(digest []byte) (h1, h2 uint64) {
 	_ = digest[15] // bounds check hint
 	h1 = binary.LittleEndian.Uint64(digest[:8])
 	h2 = binary.LittleEndian.Uint64(digest[8:16])
 	return h1, h2
 }
 
-// AddHashed inserts an entry using pre-computed hash values, skipping
-// SipHash entirely. h1 and h2 are typically extracted from a cryptographic
-// digest with [SplitDigest]. h2 is forced odd internally for coprimality
-// with the power-of-two filter size.
+// AddHashed inserts an entry by reading two hash values directly from a
+// cryptographic digest, skipping SipHash entirely. The digest must be at
+// least 16 bytes (true for SHA2-256, BLAKE2b-256, BLAKE3, etc.). Panics
+// if len(digest) < 16.
+//
+// Digests from different hash functions can be mixed freely in the same
+// filter. Identity multihashes (code 0x00) and digests shorter than 16
+// bytes cannot use this path; use a separate [Bloom] with [Bloom.Add].
 //
 // Do not mix AddHashed and [Bloom.Add] on the same filter; they compute
 // different bit positions for the same logical key.
 //
 // Not safe for concurrent use; see [Bloom.AddHashedTS].
-func (bl *Bloom) AddHashed(h1, h2 uint64) {
+func (bl *Bloom) AddHashed(digest []byte) {
 	bl.checkMode(modeHashed)
+	h1, h2 := splitDigest(digest)
 	bl.content++
 	h2 |= 1
 	for i := uint64(0); i < bl.setLocs; i++ {
@@ -331,18 +323,18 @@ func (bl *Bloom) AddHashed(h1, h2 uint64) {
 }
 
 // AddHashedTS is the thread-safe version of [Bloom.AddHashed].
-func (bl *Bloom) AddHashedTS(h1, h2 uint64) {
+func (bl *Bloom) AddHashedTS(digest []byte) {
 	bl.Mtx.Lock()
-	bl.AddHashed(h1, h2)
+	bl.AddHashed(digest)
 	bl.Mtx.Unlock()
 }
 
-// HasHashed reports whether an entry with the given pre-computed hash
-// values is in the filter. Only use on a filter populated with
-// [Bloom.AddHashed], not [Bloom.Add]. Not safe for concurrent use;
-// see [Bloom.HasHashedTS].
-func (bl *Bloom) HasHashed(h1, h2 uint64) bool {
+// HasHashed reports whether an entry with the given cryptographic digest
+// is in the filter. Only use on a filter populated with [Bloom.AddHashed],
+// not [Bloom.Add]. Not safe for concurrent use; see [Bloom.HasHashedTS].
+func (bl *Bloom) HasHashed(digest []byte) bool {
 	bl.checkMode(modeHashed)
+	h1, h2 := splitDigest(digest)
 	h2 |= 1
 	for i := uint64(0); i < bl.setLocs; i++ {
 		if !bl.isSet((h1 + i*h2) & bl.size) {
@@ -353,9 +345,9 @@ func (bl *Bloom) HasHashed(h1, h2 uint64) bool {
 }
 
 // HasHashedTS is the thread-safe version of [Bloom.HasHashed].
-func (bl *Bloom) HasHashedTS(h1, h2 uint64) bool {
+func (bl *Bloom) HasHashedTS(digest []byte) bool {
 	bl.Mtx.RLock()
-	has := bl.HasHashed(h1, h2)
+	has := bl.HasHashed(digest)
 	bl.Mtx.RUnlock()
 	return has
 }
@@ -363,8 +355,9 @@ func (bl *Bloom) HasHashedTS(h1, h2 uint64) bool {
 // AddIfNotHasHashed is the pre-hashed variant of [Bloom.AddIfNotHas].
 // Only use on a filter populated with [Bloom.AddHashed], not [Bloom.Add].
 // Not safe for concurrent use; see [Bloom.AddIfNotHasHashedTS].
-func (bl *Bloom) AddIfNotHasHashed(h1, h2 uint64) (added bool) {
+func (bl *Bloom) AddIfNotHasHashed(digest []byte) (added bool) {
 	bl.checkMode(modeHashed)
+	h1, h2 := splitDigest(digest)
 	h2 |= 1
 	contained := true
 	for i := uint64(0); i < bl.setLocs; i++ {
@@ -378,9 +371,9 @@ func (bl *Bloom) AddIfNotHasHashed(h1, h2 uint64) (added bool) {
 }
 
 // AddIfNotHasHashedTS is the thread-safe version of [Bloom.AddIfNotHasHashed].
-func (bl *Bloom) AddIfNotHasHashedTS(h1, h2 uint64) (added bool) {
+func (bl *Bloom) AddIfNotHasHashedTS(digest []byte) (added bool) {
 	bl.Mtx.Lock()
-	added = bl.AddIfNotHasHashed(h1, h2)
+	added = bl.AddIfNotHasHashed(digest)
 	bl.Mtx.Unlock()
 	return added
 }

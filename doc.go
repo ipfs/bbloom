@@ -19,9 +19,9 @@
 // # Pre-hashed keys (Kirsch-Mitzenmacher optimization)
 //
 // When the input is already a cryptographic hash digest (e.g. SHA2-256),
-// the SipHash step can be skipped entirely. [SplitDigest] extracts two
-// uint64 values from the digest, and [Bloom.AddHashed] / [Bloom.HasHashed]
-// use them directly as the double-hashing pair. This is based on the result
+// the SipHash step can be skipped entirely. [Bloom.AddHashed] and
+// [Bloom.HasHashed] read two uint64 values directly from the digest bytes
+// and use them as the double-hashing pair. This is based on the result
 // by Kirsch and Mitzenmacher ("Less Hashing, Same Performance: Building a
 // Better Bloom Filter", 2008, https://doi.org/10.1002/rsa.20208) which
 // proves that only two hash values are needed to simulate k independent
