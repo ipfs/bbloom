@@ -267,6 +267,92 @@ func (bl *Bloom) AddIfNotHasTS(entry []byte) (added bool) {
 	return added
 }
 
+// SplitDigest reads two little-endian uint64 values from a cryptographic
+// digest for use with [Bloom.AddHashed] / [Bloom.HasHashed]. h1 comes from
+// digest[0:8], h2 from digest[8:16]. Panics if len(digest) < 16.
+//
+// Typical usage with a go-cid CID and go-multihash:
+//
+//	dm, _ := multihash.Decode(c.Hash())
+//	if dm.Code != multihash.IDENTITY && len(dm.Digest) >= 16 {
+//	    h1, h2 := bbloom.SplitDigest(dm.Digest)
+//	    bf.AddHashed(h1, h2)
+//	}
+//
+// Identity multihashes (code 0x00) contain raw data, not a crypto digest,
+// and must fall back to the SipHash path ([Bloom.Add]).
+func SplitDigest(digest []byte) (h1, h2 uint64) {
+	_ = digest[15] // bounds check hint
+	h1 = binary.LittleEndian.Uint64(digest[:8])
+	h2 = binary.LittleEndian.Uint64(digest[8:16])
+	return h1, h2
+}
+
+// AddHashed inserts an entry using pre-computed hash values, skipping
+// SipHash. This is the Kirsch-Mitzenmacher optimization: when the input
+// is already a cryptographic digest, h1 and h2 can be extracted with
+// [SplitDigest]. h2 is forced odd internally for coprimality with the
+// power-of-two filter size. Not safe for concurrent use; see
+// [Bloom.AddHashedTS].
+func (bl *Bloom) AddHashed(h1, h2 uint64) {
+	bl.content++
+	h2 |= 1
+	for i := uint64(0); i < bl.setLocs; i++ {
+		bl.set((h1 + i*h2) & bl.size)
+	}
+}
+
+// AddHashedTS is the thread-safe version of [Bloom.AddHashed].
+func (bl *Bloom) AddHashedTS(h1, h2 uint64) {
+	bl.Mtx.Lock()
+	bl.AddHashed(h1, h2)
+	bl.Mtx.Unlock()
+}
+
+// HasHashed reports whether an entry with the given pre-computed hash
+// values is in the filter. See [Bloom.AddHashed] for details. Not safe
+// for concurrent use; see [Bloom.HasHashedTS].
+func (bl *Bloom) HasHashed(h1, h2 uint64) bool {
+	h2 |= 1
+	for i := uint64(0); i < bl.setLocs; i++ {
+		if !bl.isSet((h1 + i*h2) & bl.size) {
+			return false
+		}
+	}
+	return true
+}
+
+// HasHashedTS is the thread-safe version of [Bloom.HasHashed].
+func (bl *Bloom) HasHashedTS(h1, h2 uint64) bool {
+	bl.Mtx.RLock()
+	has := bl.HasHashed(h1, h2)
+	bl.Mtx.RUnlock()
+	return has
+}
+
+// AddIfNotHasHashed is the pre-hashed variant of [Bloom.AddIfNotHas].
+// Not safe for concurrent use; see [Bloom.AddIfNotHasHashedTS].
+func (bl *Bloom) AddIfNotHasHashed(h1, h2 uint64) (added bool) {
+	h2 |= 1
+	contained := true
+	for i := uint64(0); i < bl.setLocs; i++ {
+		prev := bl.getSet((h1 + i*h2) & bl.size)
+		contained = contained && prev
+	}
+	if !contained {
+		bl.content++
+	}
+	return !contained
+}
+
+// AddIfNotHasHashedTS is the thread-safe version of [Bloom.AddIfNotHasHashed].
+func (bl *Bloom) AddIfNotHasHashedTS(h1, h2 uint64) (added bool) {
+	bl.Mtx.Lock()
+	added = bl.AddIfNotHasHashed(h1, h2)
+	bl.Mtx.Unlock()
+	return added
+}
+
 // Clear resets the bloom filter, zeroing the bitset and the element counter.
 // Not safe for concurrent use; see [Bloom.ClearTS].
 func (bl *Bloom) Clear() {
