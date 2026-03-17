@@ -289,11 +289,14 @@ func SplitDigest(digest []byte) (h1, h2 uint64) {
 }
 
 // AddHashed inserts an entry using pre-computed hash values, skipping
-// SipHash. This is the Kirsch-Mitzenmacher optimization: when the input
-// is already a cryptographic digest, h1 and h2 can be extracted with
-// [SplitDigest]. h2 is forced odd internally for coprimality with the
-// power-of-two filter size. Not safe for concurrent use; see
-// [Bloom.AddHashedTS].
+// SipHash entirely. h1 and h2 are typically extracted from a cryptographic
+// digest with [SplitDigest]. h2 is forced odd internally for coprimality
+// with the power-of-two filter size.
+//
+// Do not mix AddHashed and [Bloom.Add] on the same filter; they compute
+// different bit positions for the same logical key.
+//
+// Not safe for concurrent use; see [Bloom.AddHashedTS].
 func (bl *Bloom) AddHashed(h1, h2 uint64) {
 	bl.content++
 	h2 |= 1
@@ -310,8 +313,9 @@ func (bl *Bloom) AddHashedTS(h1, h2 uint64) {
 }
 
 // HasHashed reports whether an entry with the given pre-computed hash
-// values is in the filter. See [Bloom.AddHashed] for details. Not safe
-// for concurrent use; see [Bloom.HasHashedTS].
+// values is in the filter. Only use on a filter populated with
+// [Bloom.AddHashed], not [Bloom.Add]. Not safe for concurrent use;
+// see [Bloom.HasHashedTS].
 func (bl *Bloom) HasHashed(h1, h2 uint64) bool {
 	h2 |= 1
 	for i := uint64(0); i < bl.setLocs; i++ {
@@ -331,6 +335,7 @@ func (bl *Bloom) HasHashedTS(h1, h2 uint64) bool {
 }
 
 // AddIfNotHasHashed is the pre-hashed variant of [Bloom.AddIfNotHas].
+// Only use on a filter populated with [Bloom.AddHashed], not [Bloom.Add].
 // Not safe for concurrent use; see [Bloom.AddIfNotHasHashedTS].
 func (bl *Bloom) AddIfNotHasHashed(h1, h2 uint64) (added bool) {
 	h2 |= 1
