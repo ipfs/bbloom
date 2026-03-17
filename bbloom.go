@@ -297,13 +297,14 @@ func (bl *Bloom) AddIfNotHasTS(entry []byte) (added bool) {
 // Typical usage with a go-cid CID and go-multihash:
 //
 //	dm, _ := multihash.Decode(c.Hash())
-//	if dm.Code != multihash.IDENTITY && len(dm.Digest) >= 16 {
-//	    h1, h2 := bbloom.SplitDigest(dm.Digest)
-//	    bf.AddHashed(h1, h2)
-//	}
+//	h1, h2 := bbloom.SplitDigest(dm.Digest)
+//	bf.AddHashed(h1, h2)
 //
-// Identity multihashes (code 0x00) contain raw data, not a crypto digest,
-// and must fall back to the SipHash path ([Bloom.Add]).
+// Digests from different hash functions (SHA2-256, BLAKE2b-256, etc.) can
+// be mixed freely in the same filter -- each produces uniform, independent
+// bytes. Identity multihashes (code 0x00) and digests shorter than 16
+// bytes cannot use this path; use a separate [Bloom] with [Bloom.Add]
+// for those.
 func SplitDigest(digest []byte) (h1, h2 uint64) {
 	_ = digest[15] // bounds check hint
 	h1 = binary.LittleEndian.Uint64(digest[:8])
