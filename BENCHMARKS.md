@@ -15,16 +15,21 @@ go test -bench='BenchmarkPerOp' -benchmem -count=5 -benchtime=2s
 
 ### Speed (ns/op, lower is better)
 
-| Operation       | ipfs/bbloom | bits-and-blooms/bloom/v3 | greatroar/blobloom |
-| --------------- | ----------: | -----------------------: | -----------------: |
-| Add             |       ~20.5 |                    ~39.3 |              ~4.95 |
-| Has/Test        |       ~20.0 |                    ~36.1 |              ~4.4  |
-| AddTS (locked)  |       ~32.6 |                      n/a |                n/a |
-| HasTS (rlocked) |       ~23.7 |                      n/a |                n/a |
+| Operation                | ipfs/bbloom | bits-and-blooms/bloom/v3 | greatroar/blobloom |
+| ------------------------ | ----------: | -----------------------: | -----------------: |
+| Add (from `[]byte`)      |       ~20.5 |                    ~39.3 |              ~4.95 |
+| Has (from `[]byte`)      |       ~20.0 |                    ~36.1 |              ~4.4  |
+| AddHashed (pre-hashed)   |        ~4.1 |                      n/a |              ~4.95 |
+| HasHashed (pre-hashed)   |        ~6.1 |                      n/a |              ~4.4  |
+| AddTS (locked)           |       ~32.6 |                      n/a |                n/a |
+| HasTS (rlocked)          |       ~23.7 |                      n/a |                n/a |
 
-**Fastest**: blobloom, but it accepts a pre-hashed `uint64`, so its numbers
-do not include hashing time. Comparing only libraries that hash from `[]byte`
-internally, **bbloom is ~2x faster** than bits-and-blooms.
+**Fastest from `[]byte`**: bbloom (~2x faster than bits-and-blooms).
+
+**Pre-hashed path**: `AddHashed`/`HasHashed` accept pre-split `uint64` values
+from a cryptographic digest via `SplitDigest`, skipping SipHash entirely
+([Kirsch-Mitzenmacher optimization](https://doi.org/10.1002/rsa.20208)).
+This closes the gap with blobloom, which also operates on pre-hashed values.
 
 ### Memory (total allocations for 65536 inserts)
 
@@ -54,7 +59,8 @@ means fewer collisions.
 
 | Aspect    | Winner                                                           |
 | --------- | ---------------------------------------------------------------- |
-| Speed     | blobloom (pre-hashed); bbloom (hashing from `[]byte`)            |
+| Speed (from `[]byte`)   | bbloom (~20 ns/op)                                 |
+| Speed (pre-hashed)      | blobloom and bbloom (~4-6 ns/op)                   |
 | Memory    | bits-and-blooms                                                  |
 | Accuracy  | bbloom (0.07% vs 1% target)                                     |
 | Built-in thread safety | bbloom (`AddTS`/`HasTS` with mutex)                |

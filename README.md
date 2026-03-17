@@ -37,11 +37,20 @@ bf.AddIfNotHas([]byte("buTTer"))  // true  (new entry)
 bf.AddTS([]byte("peanutbutter"))
 bf.HasTS([]byte("peanutbutter"))  // true
 
+// pre-hashed path: skip SipHash when input is a crypto digest
+// (Kirsch-Mitzenmacher optimization, ~4x faster per op)
+digest := sha256Hash(...)      // any crypto digest >= 16 bytes
+bf.AddHashed(digest)
+bf.HasHashed(digest)           // true
+
 // JSON serialization
 data := bf.JSONMarshal()
 restored, _ := bbloom.JSONUnmarshal(data)
 restored.Has([]byte("butter"))    // true
 ```
+
+**Note:** `Add` and `AddHashed` compute different bit positions. A filter
+must use one path consistently for all entries.
 
 ## Benchmarks
 
