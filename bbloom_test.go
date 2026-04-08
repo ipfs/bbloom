@@ -341,6 +341,89 @@ func TestFillRatio(t *testing.T) {
 	}
 }
 
+func ExampleNew() {
+	// Create a filter sized for 10000 entries with a 0.1% false positive rate.
+	bf, err := New(float64(10000), 0.001)
+	if err != nil {
+		panic(err)
+	}
+
+	bf.Add([]byte("hello"))
+	bf.Add([]byte("world"))
+
+	fmt.Println(bf.Has([]byte("hello")))
+	fmt.Println(bf.Has([]byte("world")))
+	fmt.Println(bf.Has([]byte("missing")))
+
+	// Output:
+	// true
+	// true
+	// false
+}
+
+func ExampleNewWithKeys() {
+	// Use random secret keys to prevent hash-flooding attacks when the
+	// filter holds data from untrusted sources.
+	var k0, k1 uint64 = 0x0123456789abcdef, 0xfedcba9876543210
+
+	bf, err := NewWithKeys(k0, k1, float64(10000), 0.001)
+	if err != nil {
+		panic(err)
+	}
+
+	bf.Add([]byte("hello"))
+	fmt.Println(bf.Has([]byte("hello")))
+	fmt.Println(bf.Has([]byte("missing")))
+
+	// Output:
+	// true
+	// false
+}
+
+func ExampleBloom_Has() {
+	bf, err := New(float64(10000), 0.001)
+	if err != nil {
+		panic(err)
+	}
+
+	bf.Add([]byte("apple"))
+
+	// Has returns true for entries that were added.
+	fmt.Println(bf.Has([]byte("apple")))
+
+	// Has returns false for entries that were never added (no false negatives).
+	fmt.Println(bf.Has([]byte("banana")))
+
+	// Output:
+	// true
+	// false
+}
+
+func ExampleJSONUnmarshal() {
+	// Create and populate a filter.
+	bf, err := New(float64(10000), 0.001)
+	if err != nil {
+		panic(err)
+	}
+	bf.Add([]byte("persisted"))
+
+	// Serialize to JSON.
+	data := bf.JSONMarshal()
+
+	// Restore from JSON.
+	bf2, err := JSONUnmarshal(data)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(bf2.Has([]byte("persisted")))
+	fmt.Println(bf2.Has([]byte("missing")))
+
+	// Output:
+	// true
+	// false
+}
+
 func ExampleBloom_AddIfNotHas() {
 	bf, err := New(float64(512), float64(1))
 	if err != nil {
