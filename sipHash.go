@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: CC0-1.0
+//
 // Written in 2012 by Dmitry Chestnykh.
 //
 // To the extent possible under law, the author have dedicated all copyright
