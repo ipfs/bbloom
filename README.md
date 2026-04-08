@@ -5,19 +5,22 @@
 
 A fast bloom filter with a real bitset, JSON serialization, and thread-safe variants.
 
-Forked from [`AndreasBriese/bbloom`](https://github.com/AndreasBriese/bbloom). Uses an inlined SipHash-2-4 for hashing.
+## Why this fork
 
-## Install
+Forked from [`AndreasBriese/bbloom`](https://github.com/AndreasBriese/bbloom) in 2019 after the upstream became unmaintained. The fork fixes safety and correctness issues, and adds features needed for production use:
 
-```sh
-go get github.com/ipfs/bbloom
-```
+- Caller-provided SipHash keys (`NewWithKeys`) to prevent hash-flooding with untrusted input
+- Fixed double-hash step to always be odd, avoiding degenerate probe sequences
+- SipHash keys preserved across JSON serialization round-trips
+- Proper error handling in deserialization
+
+The library may contain IPFS-specific optimizations but works as a general-purpose bloom filter.
 
 ## Usage
 
 ```go
-// create a bloom filter for 65536 items and 1% false-positive rate
-bf, _ := bbloom.New(float64(1<<16), float64(0.01))
+// create a bloom filter for 65536 items and 0.1% false-positive rate
+bf, _ := bbloom.New(float64(1<<16), float64(0.001))
 
 // or specify size and hash locations explicitly
 // bf, _ = bbloom.New(650000.0, 7.0)
@@ -42,6 +45,13 @@ data := bf.JSONMarshal()
 restored, _ := bbloom.JSONUnmarshal(data)
 restored.Has([]byte("butter"))    // true
 ```
+
+## Used in IPFS
+
+[Kubo](https://github.com/ipfs/kubo) and [Boxo](https://github.com/ipfs/boxo) use this library where CID deduplication or tracking is needed but the number of CIDs is too large to keep in memory as a map. Two main use cases:
+
+- **Blockstore bloom cache**: answers `Has()` checks without hitting the datastore, filtering out the majority of negative lookups.
+- **DAG walker dedup**: tracks visited CIDs during DAG traversal in the provider/reprovide system, keeping memory usage proportional to the bloom filter size rather than the number of blocks walked.
 
 ## Benchmarks
 
