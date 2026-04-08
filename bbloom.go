@@ -1,22 +1,4 @@
-// The MIT License (MIT)
-// Copyright (c) 2014 Andreas Briese, eduToolbox@Bri-C GmbH, Sarstedt
-
-// Permission is hereby granted, free of charge, to any person obtaining a copy of
-// this software and associated documentation files (the "Software"), to deal in
-// the Software without restriction, including without limitation the rights to
-// use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
-// the Software, and to permit persons to whom the Software is furnished to do so,
-// subject to the following conditions:
-
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
-// FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
-// COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-// IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-// CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+// SPDX-License-Identifier: MIT
 
 package bbloom
 
@@ -125,9 +107,12 @@ func NewWithKeys(k0, k1 uint64, params ...float64) (*Bloom, error) {
 	return bf, nil
 }
 
-// NewWithBoolset creates a bloom filter from a pre-existing bitset.
+// NewWithBoolset creates a bloom filter from a pre-existing bitset, typically
+// obtained from a previous [Bloom.JSONMarshal] export or an external source.
 // bs is the serialized bitset (big-endian uint64 words) and locs is the
-// number of hash locations per entry.
+// number of hash locations per entry. The filter uses default SipHash keys;
+// use [NewWithBoolsetAndKeys] to restore a filter that was created with
+// custom keys.
 func NewWithBoolset(bs []byte, locs uint64) (bloomfilter *Bloom) {
 	bloomfilter, err := New(float64(len(bs)<<3), float64(locs))
 	if err != nil {
@@ -140,8 +125,10 @@ func NewWithBoolset(bs []byte, locs uint64) (bloomfilter *Bloom) {
 }
 
 // NewWithBoolsetAndKeys creates a bloom filter from a pre-existing bitset
-// with caller-provided SipHash keys. See [NewWithKeys] for why custom keys
-// matter and [NewWithBoolset] for how the bitset is interpreted.
+// with caller-provided SipHash keys. This is the constructor to use when
+// restoring a filter that was originally created with [NewWithKeys].
+// See [NewWithKeys] for why custom keys matter and [NewWithBoolset] for
+// how the bitset parameter is interpreted.
 func NewWithBoolsetAndKeys(bs []byte, locs, k0, k1 uint64) (bloomfilter *Bloom) {
 	bloomfilter = NewWithBoolset(bs, locs)
 	bloomfilter.k0 = k0
@@ -163,6 +150,8 @@ type bloomJSONImExport struct {
 // The Mtx field is exposed so callers can hold the lock across
 // multiple operations when needed.
 type Bloom struct {
+	// Mtx is exposed so callers can hold the lock across multiple
+	// operations (e.g. a Has followed by Add) without racing.
 	Mtx     sync.RWMutex
 	bitset  []uint64
 	sizeExp uint64
